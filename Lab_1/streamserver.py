@@ -16,7 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
-tapp = Flask(__name__)
+app = Flask(__name__)
 
 # Attempt to initialize the Pi camera
 try:
