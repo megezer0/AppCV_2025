@@ -1,3 +1,6 @@
-AppCV_2025/Lab_2/captured_points/*
-AppCV_2025/Lab_2/data/*
-Lab_2/.DS_Store
+Lab_2/captured_points/
+Lab_2/data/
+
+
+# ignore macOS metadata
+.DS_Store
