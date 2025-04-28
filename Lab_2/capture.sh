@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
+# Default number of images to capture if not specified
+NUM_IMAGES=${1:-25}
+
 # Ensure data/ exists and is empty
 mkdir -p data
 rm -f data/img_*.jpg
 
-# Capture 20 frames one-by-one
-for i in $(seq -w 0 19); do
+# Capture specified number of frames one-by-one
+for i in $(seq -w 0 $((NUM_IMAGES-1))); do
   echo "Capturing frame $i…"
   libcamera-still -n \
     --width 640 \
