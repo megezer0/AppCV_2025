@@ -20,8 +20,8 @@ args = parser.parse_args()
 BOARD_TYPE = args.board
 
 # ---------------- CONFIG ---------------------
-NUM_SQUARES_X = 10
-NUM_SQUARES_Y = 7
+NUM_SQUARES_X = 9
+NUM_SQUARES_Y = 6
 SQUARE_SIZE_M = 0.03
 
 PATTERN_SIZE = (NUM_SQUARES_X - 1, NUM_SQUARES_Y - 1)
