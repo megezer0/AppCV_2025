@@ -22,7 +22,7 @@ BOARD_TYPE = args.board
 # ---------------- CONFIG ---------------------
 NUM_SQUARES_X = 9
 NUM_SQUARES_Y = 6
-SQUARE_SIZE_M = 0.03
+SQUARE_SIZE_M = 0.033
 
 PATTERN_SIZE = (NUM_SQUARES_X - 1, NUM_SQUARES_Y - 1)
 NUM_CORNERS = PATTERN_SIZE[0] * PATTERN_SIZE[1]
@@ -74,7 +74,7 @@ if BOARD_TYPE == "checker":
 
 elif BOARD_TYPE == "charuco":
     aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
-    board = cv2.aruco.CharucoBoard_create(5, 7, 0.03, 0.022, aruco_dict)
+    board = cv2.aruco.CharucoBoard_create(5, 7, 0.041, 0.028, aruco_dict)
 
     all_corners, all_ids = [], []
     img_shape = None
