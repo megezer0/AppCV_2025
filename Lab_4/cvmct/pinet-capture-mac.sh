@@ -4,10 +4,10 @@
 #
 
 # Load configuration
-if [ -f $(dirname $0)/pinet.cfg ]; then 
-    . $(dirname $0)/pinet.cfg
+if [ -f $(dirname $0)/pinet-mac.cfg ]; then 
+    . $(dirname $0)/pinet-mac.cfg
 else
-    echo $(dirname $0)/pinet.cfg not found
+    echo $(dirname $0)/pinet-mac.cfg not found
     exit 1
 fi
 

@@ -24,10 +24,10 @@ ap = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormat
 ap.add_argument('--img',   required=True,  help='Path to photograph')
 ap.add_argument('--yaml',  default='captured_points/intrinsics.yml',
                 help='YAML containing K and D')
-ap.add_argument('--board', choices=['checker', 'charuco'], default='charuco',
+ap.add_argument('--board', choices=['checker', 'charuco'], default='checker',
                 help='Pattern used during calibration')
-ap.add_argument('--cols',  type=int, default=7, help='# inner corners (checker) OR squares (ChArUco) along X')
-ap.add_argument('--rows',  type=int, default=5, help='# along Y')
+ap.add_argument('--cols',  type=int, default=9, help='# inner corners (checker) OR squares (ChArUco) along X')
+ap.add_argument('--rows',  type=int, default=6, help='# along Y')
 ap.add_argument('--sq',    type=float, default=0.03, help='Square size in metres')
 args = ap.parse_args()
 
