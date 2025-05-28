@@ -43,20 +43,5 @@ def detect_emotion(face_landmarks):
     
     # Return both the emotion and the keypoints you're using
     # This will help you debug by seeing exactly which points you're analyzing
-
-
-    lc = face_landmarks[61]
-    rc = face_landmarks[291]
-    ulc = face_landmarks[13]
-    llc = face_landmarks[14]
-
-    keypoints_used = [61,291,13,14]
     
-    if (lc.y < ulc.y) and (rc.y < ulc.y):
-        return ('smile', keypoints_used)
-    elif (lc.y > ulc.y) and (rc.y > ulc.y): 
-        return ('frown', keypoints_used)
-    else:
-        return ("neutral", keypoints_used)
-    
-    # return 'neutral'
+    return ('neutral', [])

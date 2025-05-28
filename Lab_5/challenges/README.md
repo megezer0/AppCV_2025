@@ -7,7 +7,7 @@ Welcome to the challenge phase! You'll implement different pose and gesture reco
 If your laptop doesn't have a webcam or you want to use a Raspberry Pi camera, you can stream video from a Raspberry Pi to your laptop for processing.
 
 ### How It Works
-The Raspberry Pi runs a video server that captures camera frames and streams them over the network. Your laptop receives these frames and processes them with MediaPipe - all your detection code remains exactly the same!
+The Raspberry Pi runs a video server that captures camera frames and streams them over the network. Your laptop receives these frames and processes them with MediaPipe - all your detection code remains exactly the same.
 
 ### Setup Instructions
 
@@ -48,14 +48,10 @@ The Raspberry Pi runs a video server that captures camera frames and streams the
 ## Challenge Overview
 
 ### ⭐ Smile Detection
-**Directory:** `smile_detection/` or `smile_detection_simple/`
+**Directory:** `smile_detection/`
 **Goal:** Detect smiles and frowns in real-time
 
-**Two versions available:**
-- `smile_detection/`: Full face mesh with 468 landmarks (more complex)
-- `smile_detection_simple/`: Simplified version with debugging visualization
-
-**For the simple version:** Your task is to implement the `detect_emotion()` function in `detection_logic.py`. The function should:
+Your task is to implement the `detect_emotion()` function in `detection_logic.py`. The function should:
 - Return a tuple: `(emotion_string, keypoints_list)`
 - emotion_string: `"smile"`, `"frown"`, or `"neutral"`
 - keypoints_list: List of landmark indices you're using for analysis
@@ -151,16 +147,14 @@ The detection functions receive keypoint data in this format:
 - **Pose keypoints**: List of 33 body landmarks with x, y, z coordinates and visibility
 
 ### Debugging Visualization
-All challenges now include visual debugging tools:
+All challenges include visual debugging tools:
 - **Gray circles**: Show all available keypoints
 - **Red circles with white borders**: Highlight keypoints you're analyzing
-- **Keypoint numbers**: Display landmark indices next to highlighted points
-- **Keypoint list**: Show which landmarks you're using at the bottom of the screen
 
 ## Tips for Success
 
 ### General Strategy
-- Start with the 1-star challenges to understand the keypoint data
+- Start with the easier challenges to understand the keypoint data
 - Use the debugging visualization to see exactly which points you're analyzing
 - Print keypoint values to understand coordinate systems
 - Test with exaggerated motions first
@@ -179,12 +173,4 @@ All challenges now include visual debugging tools:
 - **Missing detections**: Handling cases where hands/face aren't detected
 - **Sensitivity**: Balancing detection accuracy with false positives
 
-## Challenge Progression Suggestions
-
-**For beginners:** Start with Smile Detection → Number Recognition → Colosseum Decision → choose one counting challenge
-
-**For experienced programmers:** Jump to any challenge that interests you most
-
-**Time management:** Don't aim to complete all challenges. Focus on 1-3 challenges and implement them well.
-
-Remember: The goal is learning, not completion. Focus on understanding the concepts and implementing robust solutions!
+Remember: The goal is learning, not completion. Focus on understanding the unique attributes of each challenge and the methods one must use to implement a robust solutions.

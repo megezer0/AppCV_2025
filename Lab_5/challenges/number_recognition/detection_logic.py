@@ -38,51 +38,17 @@ def count_fingers(hand_data_list):
     return (counts, keypoints_used)
     """
     
-    # Initialize counts
-    left_count = 0
-    right_count = 0
+    # TODO: Implement finger counting logic here
+    # Currently returns 0 for all counts with no keypoints highlighted
     
-    # Process each detected hand
-    for hand_landmarks, hand_classification in hand_data_list:
-        # Count fingers on this hand
-        hand_finger_count = 0
-        
-        # Check each finger
-        # Thumb (special case - check x position for left/right hands)
-        if hand_classification == "Right":
-            # For right hand, thumb extends to the left (lower x)
-            if hand_landmarks[4].x < hand_landmarks[3].x:
-                hand_finger_count += 1
-        else:  # Left hand
-            # For left hand, thumb extends to the right (higher x)
-            if hand_landmarks[4].x > hand_landmarks[3].x:
-                hand_finger_count += 1
-        
-        # Other fingers (check y position)
-        if hand_landmarks[8].y < hand_landmarks[6].y:   # Index
-            hand_finger_count += 1
-        if hand_landmarks[12].y < hand_landmarks[10].y: # Middle
-            hand_finger_count += 1
-        if hand_landmarks[16].y < hand_landmarks[14].y: # Ring
-            hand_finger_count += 1
-        if hand_landmarks[20].y < hand_landmarks[18].y: # Pinky
-            hand_finger_count += 1
-        
-        # Add to appropriate hand count
-        if hand_classification == "Left":
-            left_count += hand_finger_count
-        else:  # Right
-            right_count += hand_finger_count
+    # Example of keypoints you might want to examine:
+    # fingertips = [4, 8, 12, 16, 20]  # All fingertip landmarks
+    # joints = [3, 6, 10, 14, 18]      # Corresponding joint landmarks
     
-    # Prepare return values
-    counts = {
-        "left": left_count,
-        "right": right_count, 
-        "total": left_count + right_count
-    }
+    # Return both the counts and the keypoints you're using
+    # This will help you debug by seeing exactly which points you're analyzing
     
-    keypoints_used = [4, 8, 3, 6, 12, 10, 16, 14, 20, 18]  # Tips and joints
-    
-    print(f"Left: {left_count}, Right: {right_count}, Total: {left_count + right_count}")
+    counts = {"left": 0, "right": 0, "total": 0}
+    keypoints_used = []
     
     return (counts, keypoints_used)

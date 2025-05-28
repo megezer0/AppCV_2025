@@ -23,7 +23,7 @@ In this lab, you'll explore human pose estimation using computer vision. You'll 
 
 2. Install required packages:
    ```bash
-   pip install -r requirements.txt
+   pip install opencv-python>=4.5.0 mediapipe>=0.8.0 numpy>=1.19.0
    ```
 
 ## Lab Structure
@@ -47,12 +47,6 @@ Each script will:
 - Print keypoint coordinates to the console
 - Show FPS performance in the top-left corner
 
-**[TEACHER NOTE: Insert MediaPipe keypoint diagram here showing face landmarks numbered]**
-
-**[TEACHER NOTE: Insert MediaPipe hand keypoint diagram showing finger joint numbering]**
-
-**[TEACHER NOTE: Insert MediaPipe pose keypoint diagram showing body joint numbering]**
-
 Press 'q' to quit any script.
 
 ### Phase 2: Challenges
@@ -68,11 +62,6 @@ After familiarization, move to the challenges directory and work through the pos
 ### Performance Issues
 - Close other applications that might be using your camera
 - Ensure adequate lighting for better detection
-- Lower the camera resolution if needed
-
-### Import Errors
-- Verify all packages are installed: `pip list | grep -E "(opencv|mediapipe)"`
-- Try reinstalling: `pip uninstall opencv-python mediapipe && pip install opencv-python mediapipe`
 
 ## Getting Help
 - Work in pairs and discuss challenges with your partner
