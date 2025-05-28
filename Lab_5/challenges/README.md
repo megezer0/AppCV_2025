@@ -2,6 +2,49 @@
 
 Welcome to the challenge phase! You'll implement different pose and gesture recognition systems. Each challenge is in its own directory with a skeleton function for you to complete.
 
+## Using Raspberry Pi Camera (Optional)
+
+If your laptop doesn't have a webcam or you want to use a Raspberry Pi camera, you can stream video from a Raspberry Pi to your laptop for processing.
+
+### How It Works
+The Raspberry Pi runs a video server that captures camera frames and streams them over the network. Your laptop receives these frames and processes them with MediaPipe - all your detection code remains exactly the same!
+
+### Setup Instructions
+
+**On the Raspberry Pi:**
+1. Install required packages:
+   ```bash
+   pip install flask opencv-python
+   ```
+
+2. Run the video server:
+   ```bash
+   python3 raspberry_pi/video_server.py
+   ```
+
+3. Test the connection by opening `http://cvpiXX.local:5000` in your browser (replace XX with your RPi number). You should see a live video stream.
+
+**On your laptop:**
+1. Ensure your laptop and Raspberry Pi are on the same WiFi network
+
+2. In any challenge's `main.py` file, modify the camera setup:
+   ```python
+   # Default (uses laptop webcam):
+   cap = setup_camera()
+   
+   # To use Raspberry Pi camera, uncomment and update:
+   # cap = setup_camera(raspberry_pi_url="http://cvpiXX.local:5000/video")
+   ```
+
+3. Replace `XX` with your assigned Raspberry Pi number (e.g., `cvpi33.local`)
+
+### Important Notes
+- **Automatic fallback**: If the Raspberry Pi connection fails, the code automatically falls back to your laptop webcam
+- **Performance**: Expect slightly lower FPS and video quality due to network streaming
+- **Network requirement**: Both devices must be connected to the same WiFi network
+
+---
+
 ## Challenge Overview
 
 ### ⭐ Smile Detection

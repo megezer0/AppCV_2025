@@ -20,8 +20,8 @@ def main():
     )
     
     # Setup camera
-    # cap = setup_camera()
-    cap = setup_camera(raspberry_pi_url="http://cvpi33.local:5000/video")
+    cap = setup_camera()
+    # cap = setup_camera(raspberry_pi_url="http://cvpiXX.local:5000/video")     # uncomment if you're using the Raspberry Pi as your Camera
 
     fps_calculator = FPSCalculator()
     
