@@ -5,3 +5,5 @@ Lab_2/data*
 
 # ignore macOS metadata
 .DS_Store
+
+*.pyc
