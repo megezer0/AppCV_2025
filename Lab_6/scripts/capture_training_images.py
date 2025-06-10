@@ -2,14 +2,13 @@
 # lab_6/scripts/capture_training_images.py
 
 import os
-import cv2
-import time
+import subprocess
 import argparse
-from datetime import datetime
+import time
 from pathlib import Path
 
 def capture_images(num_images=5, delay=0.5):
-    """Capture training images with specified count and delay"""
+    """Capture training images using libcamera-still"""
     
     # Set up directory structure
     base_dir = Path("lab_6").resolve()
@@ -19,7 +18,7 @@ def capture_images(num_images=5, delay=0.5):
     images_dir.mkdir(parents=True, exist_ok=True)
     
     # Find next available image number
-    existing_files = list(images_dir.glob("image_*.jpg"))
+    existing_files = list(images_dir.glob("img_*.jpg"))
     if existing_files:
         numbers = []
         for file in existing_files:
@@ -28,26 +27,14 @@ def capture_images(num_images=5, delay=0.5):
                 numbers.append(int(num_str))
             except (IndexError, ValueError):
                 continue
-        start_count = max(numbers) + 1 if numbers else 1
+        start_count = max(numbers) + 1 if numbers else 0
     else:
-        start_count = 1
-    
-    # Initialize camera
-    camera = cv2.VideoCapture(0)
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    
-    # Check if camera is working
-    ret, test_frame = camera.read()
-    if not ret:
-        print("ERROR: Could not access camera")
-        camera.release()
-        return
+        start_count = 0
     
     print(f"Starting image capture...")
     print(f"Will capture {num_images} images with {delay}s delay")
     print(f"Saving to: {images_dir}")
-    print(f"Starting from image_{start_count:03d}")
+    print(f"Starting from img_{start_count:03d}.jpg")
     print("\nGet ready! Starting in 3 seconds...")
     
     # Countdown
@@ -57,31 +44,45 @@ def capture_images(num_images=5, delay=0.5):
     
     print("Capturing!")
     
-    # Capture images
+    # Capture images using libcamera-still
+    successful_captures = 0
     for i in range(num_images):
-        ret, frame = camera.read()
-        if ret:
-            # Create filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"image_{start_count + i:03d}_{timestamp}.jpg"
-            filepath = images_dir / filename
+        image_num = start_count + i
+        filename = f"img_{image_num:03d}.jpg"
+        filepath = images_dir / filename
+        
+        try:
+            # Use libcamera-still to capture image
+            cmd = [
+                "libcamera-still",
+                "-n",  # No preview
+                "--width", "640",
+                "--height", "480",
+                "--timeout", "100",
+                "-o", str(filepath)
+            ]
             
-            # Save image
-            success = cv2.imwrite(str(filepath), frame)
-            if success:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0:
                 print(f"✓ Captured image {i+1}/{num_images}: {filename}")
+                successful_captures += 1
             else:
-                print(f"✗ Failed to save image {i+1}/{num_images}")
-        else:
-            print(f"✗ Failed to capture image {i+1}/{num_images}")
+                print(f"✗ Failed to capture image {i+1}/{num_images}: {result.stderr.strip()}")
+        
+        except subprocess.TimeoutExpired:
+            print(f"✗ Timeout capturing image {i+1}/{num_images}")
+        except FileNotFoundError:
+            print("ERROR: libcamera-still not found. Make sure camera is enabled.")
+            return
+        except Exception as e:
+            print(f"✗ Error capturing image {i+1}/{num_images}: {e}")
         
         # Wait before next capture (except for last image)
         if i < num_images - 1:
             time.sleep(delay)
     
-    # Cleanup
-    camera.release()
-    print(f"\nCapture complete! {num_images} images saved to {images_dir}")
+    print(f"\nCapture complete! {successful_captures}/{num_images} images saved to {images_dir}")
 
 def main():
     parser = argparse.ArgumentParser(description='Capture training images for ML model')
