@@ -54,7 +54,7 @@ class YOLODetector:
                 providers=providers
             )
             self.model_type = "custom"
-            self.class_names = ['stop_sign', 'custom_object_1', 'custom_object_2']
+            self.class_names = ['Stop_Sign', 'TU_Logo', 'Stahp', 'Falling_Cows']
             self.input_name = self.session.get_inputs()[0].name
             self.input_shape = self.session.get_inputs()[0].shape
             
