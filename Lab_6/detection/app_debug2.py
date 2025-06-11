@@ -21,6 +21,89 @@ def load_model(model_path):
         print(f"Error loading model: {e}")
         return None
 
+def initialize_camera():
+    """Initialize camera with multiple fallback options"""
+    print("DEBUG - Attempting camera initialization...")
+    
+    # Method 1: Default camera
+    print("DEBUG - Trying default camera (index 0)...")
+    cap = cv2.VideoCapture(0)
+    if cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            print("DEBUG - ✓ Default camera working")
+            return cap
+        else:
+            print("DEBUG - Default camera opened but can't read frames")
+            cap.release()
+    else:
+        print("DEBUG - Default camera failed to open")
+    
+    # Method 2: Try with specific backend (V4L2 for Linux)
+    print("DEBUG - Trying V4L2 backend...")
+    cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+    if cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            print("DEBUG - ✓ V4L2 backend working")
+            return cap
+        else:
+            print("DEBUG - V4L2 backend opened but can't read frames")
+            cap.release()
+    else:
+        print("DEBUG - V4L2 backend failed")
+    
+    # Method 3: Try other camera indices
+    for i in range(1, 5):
+        print(f"DEBUG - Trying camera index {i}...")
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret:
+                print(f"DEBUG - ✓ Camera index {i} working")
+                return cap
+            else:
+                cap.release()
+    
+    # Method 4: Try with GSTREAMER backend
+    print("DEBUG - Trying GStreamer backend...")
+    cap = cv2.VideoCapture(0, cv2.CAP_GSTREAMER)
+    if cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            print("DEBUG - ✓ GStreamer backend working")
+            return cap
+        else:
+            cap.release()
+    
+    # Method 5: Try with specific resolution settings
+    print("DEBUG - Trying with specific resolution settings...")
+    cap = cv2.VideoCapture(0)
+    if cap.isOpened():
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        ret, frame = cap.read()
+        if ret:
+            print("DEBUG - ✓ Camera working with resolution settings")
+            return cap
+        else:
+            cap.release()
+    
+    # Method 6: Try USB camera specifically
+    print("DEBUG - Trying USB camera with different approach...")
+    cap = cv2.VideoCapture('/dev/video0')
+    if cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            print("DEBUG - ✓ USB camera direct path working")
+            return cap
+        else:
+            cap.release()
+    
+    print("DEBUG - ❌ All camera initialization methods failed")
+    return None
+
 def preprocess_image(image, input_size):
     """Preprocess image for YOLO model"""
     original_height, original_width = image.shape[:2]
@@ -208,14 +291,14 @@ def main():
     # Define class names (customize based on your model)
     class_names = ['Stop_Sign', 'TU_Logo', 'Stahp', 'Falling_Cows']  # Your custom classes
     
-    # Initialize camera
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        print("Error: Could not open camera")
+    # Initialize camera with fallbacks
+    cap = initialize_camera()
+    if cap is None:
+        print("ERROR: Could not initialize camera with any method")
         return
     
     # DEBUG: Camera properties
-    print(f"DEBUG - Camera initialized:")
+    print(f"DEBUG - Camera initialized successfully:")
     print(f"DEBUG - Camera width: {cap.get(cv2.CAP_PROP_FRAME_WIDTH)}")
     print(f"DEBUG - Camera height: {cap.get(cv2.CAP_PROP_FRAME_HEIGHT)}")
     print(f"DEBUG - Camera FPS: {cap.get(cv2.CAP_PROP_FPS)}")
