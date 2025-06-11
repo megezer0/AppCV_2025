@@ -4,6 +4,8 @@ import time
 import logging
 import subprocess
 import threading
+import os
+import tempfile
 from flask import Flask, render_template, Response
 import cv2
 import numpy as np
@@ -24,7 +26,6 @@ app = Flask(__name__)
 
 # Global variables
 detector = None
-camera_process = None
 current_frame = None
 frame_lock = threading.Lock()
 running = True
@@ -185,62 +186,57 @@ class YOLODetector:
         return frame
 
 def camera_capture_thread():
-    """Background thread to capture frames from libcamera"""
-    global current_frame, camera_process, running
+    """Background thread to capture frames using libcamera-still in loop"""
+    global current_frame, running
     
-    # Start libcamera-vid process
-    camera_cmd = [
-        "libcamera-vid",
-        "-t", "0",  # Run indefinitely
-        "--width", "640",
-        "--height", "480",
-        "--framerate", "30",
-        "-o", "-",  # Output to stdout
-        "--codec", "mjpeg"
-    ]
+    temp_dir = tempfile.mkdtemp()
+    temp_image_path = os.path.join(temp_dir, "current_frame.jpg")
+    
+    logger.info(f"Using temporary file: {temp_image_path}")
     
     try:
-        camera_process = subprocess.Popen(
-            camera_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            bufsize=0
-        )
-        logger.info("Camera process started successfully")
-        
-        # Read MJPEG stream
-        bytes_buffer = b''
         while running:
-            chunk = camera_process.stdout.read(1024)
-            if not chunk:
-                break
-                
-            bytes_buffer += chunk
+            # Capture single frame using libcamera-still
+            cmd = [
+                "libcamera-still",
+                "-n",  # No preview
+                "--width", "640",
+                "--height", "480",
+                "--timeout", "100",  # Quick capture
+                "-o", temp_image_path
+            ]
             
-            # Look for JPEG boundaries
-            start = bytes_buffer.find(b'\xff\xd8')  # JPEG start
-            end = bytes_buffer.find(b'\xff\xd9')    # JPEG end
-            
-            if start != -1 and end != -1 and end > start:
-                # Extract complete JPEG
-                jpeg_data = bytes_buffer[start:end+2]
-                bytes_buffer = bytes_buffer[end+2:]
+            try:
+                result = subprocess.run(cmd, capture_output=True, timeout=2)
                 
-                # Decode JPEG
-                try:
-                    frame = cv2.imdecode(np.frombuffer(jpeg_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if result.returncode == 0 and os.path.exists(temp_image_path):
+                    # Read the captured image
+                    frame = cv2.imread(temp_image_path)
                     if frame is not None:
                         with frame_lock:
                             current_frame = frame.copy()
-                except Exception as e:
-                    logger.warning(f"Frame decode error: {e}")
-                    continue
-    
+                    
+                    # Clean up the temp file
+                    if os.path.exists(temp_image_path):
+                        os.remove(temp_image_path)
+                else:
+                    logger.warning("libcamera-still failed")
+                    
+            except subprocess.TimeoutExpired:
+                logger.warning("Camera capture timeout")
+            except Exception as e:
+                logger.error(f"Camera capture error: {e}")
+            
+            # Small delay between captures (~5 FPS capture rate)
+            time.sleep(0.2)
+            
     except Exception as e:
         logger.error(f"Camera thread error: {e}")
     finally:
-        if camera_process:
-            camera_process.terminate()
+        # Cleanup temp directory
+        if os.path.exists(temp_image_path):
+            os.remove(temp_image_path)
+        os.rmdir(temp_dir)
 
 def generate_frames():
     """Generator yielding JPEG-encoded frames with detections"""
@@ -261,8 +257,8 @@ def generate_frames():
                     detections = detector.detect_objects(frame)
                     frame = detector.draw_detections(frame, detections)
                     
-                    # Log detections
-                    if detections:
+                    # Log detections (less frequently to avoid spam)
+                    if detections and time.time() % 2 < 0.2:  # Log every ~2 seconds
                         det_summary = [f"{d['class_name']}({d['confidence']:.2f})" for d in detections]
                         logger.info(f"Detections: {', '.join(det_summary)}")
                 
@@ -270,22 +266,28 @@ def generate_frames():
                 status_text = f"Model: {detector.model_type if detector else 'none'}"
                 cv2.putText(frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
+                # Add timestamp
+                timestamp = time.strftime("%H:%M:%S")
+                cv2.putText(frame, timestamp, (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                
             except Exception as e:
                 logger.error(f"Detection error: {e}")
+                # Add error text to frame
+                cv2.putText(frame, "Detection Error", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         else:
             # Create placeholder frame
             frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            text = "Starting camera..."
+            text = "Waiting for camera..."
             cv2.putText(frame, text, (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
         
         # Encode frame to JPEG
-        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if ret:
             frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         
-        time.sleep(0.1)  # ~10 FPS
+        time.sleep(0.1)  # ~10 FPS stream rate
 
 @app.route('/')
 def index():
@@ -303,11 +305,9 @@ def video_feed():
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully"""
-    global running, camera_process
+    global running
     logger.info("Shutting down...")
     running = False
-    if camera_process:
-        camera_process.terminate()
     sys.exit(0)
 
 def parse_args():
@@ -345,7 +345,7 @@ if __name__ == '__main__':
     camera_thread.start()
     
     # Wait a moment for camera to initialize
-    time.sleep(2)
+    time.sleep(3)
     
     logger.info(f"Starting detection stream server on port {args.port}")
     logger.info(f"Model type: {detector.model_type}")
@@ -357,5 +357,3 @@ if __name__ == '__main__':
         logger.error(f"Server error: {e}")
     finally:
         running = False
-        if camera_process:
-            camera_process.terminate()
