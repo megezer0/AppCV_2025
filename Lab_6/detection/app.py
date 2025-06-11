@@ -2,10 +2,8 @@
 import argparse
 import time
 import logging
-import subprocess
 import threading
 import os
-import tempfile
 from flask import Flask, render_template, Response
 import cv2
 import numpy as np
@@ -29,39 +27,53 @@ detector = None
 current_frame = None
 frame_lock = threading.Lock()
 running = True
+frame_counter = 0
 
 class YOLODetector:
-    def __init__(self, model_path=None, confidence_threshold=0.5):
+    def __init__(self, model_path=None, confidence_threshold=0.5, input_size=320):
         self.conf_threshold = confidence_threshold
+        self.input_size = input_size  # Smaller input size for Pi 3
         
         if model_path and Path(model_path).exists():
-            # Load custom ONNX model
+            # Load custom ONNX model with optimizations
             logger.info(f"Loading custom model: {model_path}")
-            self.session = ort.InferenceSession(model_path)
+            
+            # Optimize ONNX runtime for CPU
+            providers = ['CPUExecutionProvider']
+            sess_options = ort.SessionOptions()
+            sess_options.inter_op_num_threads = 2  # Limit threads for Pi 3
+            sess_options.intra_op_num_threads = 2
+            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            
+            self.session = ort.InferenceSession(
+                model_path, 
+                sess_options=sess_options,
+                providers=providers
+            )
             self.model_type = "custom"
             self.class_names = ['stop_sign', 'custom_object_1', 'custom_object_2']
             self.input_name = self.session.get_inputs()[0].name
             self.input_shape = self.session.get_inputs()[0].shape
         else:
-            # Load YOLOv8n model
+            # Load YOLOv8n model with optimizations
             try:
                 from ultralytics import YOLO
                 logger.info("Loading YOLOv8n pretrained model")
                 self.yolo_model = YOLO('yolov8n.pt')
+                
+                # Configure for lower resource usage
+                self.yolo_model.overrides['imgsz'] = self.input_size
+                self.yolo_model.overrides['half'] = False  # Disable FP16 on Pi
+                self.yolo_model.overrides['device'] = 'cpu'
+                
                 self.model_type = "yolov8"
-                # Subset of COCO classes most relevant for demonstration
+                # Reduced class list for better performance
                 self.class_names = [
-                    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 
-                    'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench',
-                    'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 
-                    'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
-                    'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
-                    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup',
-                    'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange',
-                    'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
-                    'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
-                    'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
-                    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+                    'person', 'bicycle', 'car', 'motorcycle', 'bus', 'truck', 
+                    'traffic light', 'stop sign', 'bench', 'bird', 'cat', 'dog', 
+                    'backpack', 'umbrella', 'handbag', 'bottle', 'cup', 'chair', 
+                    'couch', 'potted plant', 'tv', 'laptop', 'cell phone', 'book'
                 ]
             except ImportError:
                 logger.error("Ultralytics not available and no custom model provided")
@@ -69,14 +81,16 @@ class YOLODetector:
                 self.class_names = []
         
         logger.info(f"Detector initialized with {len(self.class_names)} classes")
+        logger.info(f"Input size: {self.input_size}x{self.input_size}")
     
     def preprocess_frame_onnx(self, frame):
-        """Prepare frame for ONNX YOLO inference"""
-        input_height, input_width = self.input_shape[2], self.input_shape[3]
+        """Prepare frame for ONNX YOLO inference - optimized"""
+        # Resize to smaller input size
+        resized = cv2.resize(frame, (self.input_size, self.input_size))
         
-        # Resize and normalize
-        resized = cv2.resize(frame, (input_width, input_height))
-        input_tensor = resized.astype(np.float32) / 255.0
+        # Normalize efficiently
+        input_tensor = resized.astype(np.float32)
+        input_tensor /= 255.0
         
         # Convert HWC to CHW and add batch dimension
         input_tensor = np.transpose(input_tensor, (2, 0, 1))
@@ -85,53 +99,70 @@ class YOLODetector:
         return input_tensor
     
     def postprocess_onnx_detections(self, outputs, original_shape):
-        """Convert ONNX model outputs to bounding boxes"""
+        """Convert ONNX model outputs to bounding boxes - optimized"""
         predictions = outputs[0][0]  # Remove batch dimension
         
         detections = []
         h, w = original_shape[:2]
         
-        for detection in predictions:
+        # Vectorized operations for better performance
+        confidences = predictions[:, 4]
+        valid_indices = confidences > self.conf_threshold
+        valid_predictions = predictions[valid_indices]
+        
+        for detection in valid_predictions:
             confidence = detection[4]
-            if confidence > self.conf_threshold:
-                # Get class scores
-                class_scores = detection[5:]
-                class_id = np.argmax(class_scores)
-                class_confidence = class_scores[class_id] * confidence
+            
+            # Get class scores
+            class_scores = detection[5:]
+            class_id = np.argmax(class_scores)
+            class_confidence = class_scores[class_id] * confidence
+            
+            if class_confidence > self.conf_threshold and class_id < len(self.class_names):
+                # Convert from normalized coordinates
+                x_center, y_center, width, height = detection[:4]
+                x_center *= w
+                y_center *= h
+                width *= w
+                height *= h
                 
-                if class_confidence > self.conf_threshold and class_id < len(self.class_names):
-                    # Convert from normalized coordinates
-                    x_center, y_center, width, height = detection[:4]
-                    x_center *= w
-                    y_center *= h
-                    width *= w
-                    height *= h
-                    
-                    # Convert to corner coordinates
-                    x1 = int(x_center - width / 2)
-                    y1 = int(y_center - height / 2)
-                    x2 = int(x_center + width / 2)
-                    y2 = int(y_center + height / 2)
-                    
-                    detections.append({
-                        'class_id': class_id,
-                        'class_name': self.class_names[class_id],
-                        'confidence': class_confidence,
-                        'bbox': [x1, y1, x2, y2]
-                    })
+                # Convert to corner coordinates
+                x1 = int(x_center - width / 2)
+                y1 = int(y_center - height / 2)
+                x2 = int(x_center + width / 2)
+                y2 = int(y_center + height / 2)
+                
+                # Clamp to frame boundaries
+                x1 = max(0, x1)
+                y1 = max(0, y1)
+                x2 = min(w, x2)
+                y2 = min(h, y2)
+                
+                detections.append({
+                    'class_id': class_id,
+                    'class_name': self.class_names[class_id],
+                    'confidence': class_confidence,
+                    'bbox': [x1, y1, x2, y2]
+                })
         
         return detections
     
     def detect_objects(self, frame):
-        """Run inference on frame"""
+        """Run inference on frame - optimized"""
         if self.model_type == "custom":
             # Use custom ONNX model
             input_tensor = self.preprocess_frame_onnx(frame)
             outputs = self.session.run(None, {self.input_name: input_tensor})
             detections = self.postprocess_onnx_detections(outputs, frame.shape)
         elif self.model_type == "yolov8":
-            # Use YOLOv8 model
-            results = self.yolo_model(frame, verbose=False)
+            # Use YOLOv8 model with optimizations
+            results = self.yolo_model(
+                frame, 
+                verbose=False, 
+                imgsz=self.input_size,
+                conf=self.conf_threshold,
+                max_det=10  # Limit max detections for performance
+            )
             detections = []
             
             for result in results:
@@ -156,7 +187,7 @@ class YOLODetector:
         return detections
     
     def draw_detections(self, frame, detections):
-        """Draw bounding boxes on frame"""
+        """Draw bounding boxes on frame - optimized"""
         for detection in detections:
             x1, y1, x2, y2 = detection['bbox']
             class_name = detection['class_name']
@@ -173,74 +204,83 @@ class YOLODetector:
             # Draw bounding box
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             
-            # Draw label background
+            # Draw label with smaller font for performance
             label = f"{class_name}: {confidence:.2f}"
-            label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
-            cv2.rectangle(frame, (x1, y1 - label_size[1] - 10), 
+            font_scale = 0.4
+            thickness = 1
+            label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+            cv2.rectangle(frame, (x1, y1 - label_size[1] - 5), 
                          (x1 + label_size[0], y1), color, -1)
             
             # Draw label text
-            cv2.putText(frame, label, (x1, y1 - 5), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            cv2.putText(frame, label, (x1, y1 - 3), 
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
         
         return frame
 
 def camera_capture_thread():
-    """Background thread to capture frames using libcamera-still in loop"""
+    """Optimized camera capture using OpenCV VideoCapture"""
     global current_frame, running
     
-    temp_dir = tempfile.mkdtemp()
-    temp_image_path = os.path.join(temp_dir, "current_frame.jpg")
+    logger.info("Initializing camera with OpenCV...")
     
-    logger.info(f"Using temporary file: {temp_image_path}")
+    # Try different camera backends for Pi
+    backends_to_try = [cv2.CAP_V4L2, cv2.CAP_ANY]
+    cap = None
+    
+    for backend in backends_to_try:
+        try:
+            cap = cv2.VideoCapture(0, backend)
+            if cap.isOpened():
+                logger.info(f"Camera opened with backend: {backend}")
+                break
+        except:
+            continue
+    
+    if cap is None or not cap.isOpened():
+        logger.error("Failed to open camera")
+        return
+    
+    # Optimize camera settings for Pi 3
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)   # Lower resolution
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+    cap.set(cv2.CAP_PROP_FPS, 15)            # Lower FPS
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)      # Reduce buffer
+    
+    # Verify settings
+    actual_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+    actual_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    actual_fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    logger.info(f"Camera settings: {actual_width}x{actual_height} @ {actual_fps} FPS")
     
     try:
         while running:
-            # Capture single frame using libcamera-still
-            cmd = [
-                "libcamera-still",
-                "-n",  # No preview
-                "--width", "640",
-                "--height", "480",
-                "--timeout", "100",  # Quick capture
-                "-o", temp_image_path
-            ]
+            ret, frame = cap.read()
             
-            try:
-                result = subprocess.run(cmd, capture_output=True, timeout=2)
-                
-                if result.returncode == 0 and os.path.exists(temp_image_path):
-                    # Read the captured image
-                    frame = cv2.imread(temp_image_path)
-                    if frame is not None:
-                        with frame_lock:
-                            current_frame = frame.copy()
-                    
-                    # Clean up the temp file
-                    if os.path.exists(temp_image_path):
-                        os.remove(temp_image_path)
-                else:
-                    logger.warning("libcamera-still failed")
-                    
-            except subprocess.TimeoutExpired:
-                logger.warning("Camera capture timeout")
-            except Exception as e:
-                logger.error(f"Camera capture error: {e}")
+            if ret and frame is not None:
+                with frame_lock:
+                    current_frame = frame.copy()
+            else:
+                logger.warning("Failed to read frame")
+                time.sleep(0.1)
             
-            # Small delay between captures (~5 FPS capture rate)
-            time.sleep(0.2)
+            # Moderate capture rate
+            time.sleep(0.05)  # ~20 FPS capture, but detection will be slower
             
     except Exception as e:
         logger.error(f"Camera thread error: {e}")
     finally:
-        # Cleanup temp directory
-        if os.path.exists(temp_image_path):
-            os.remove(temp_image_path)
-        os.rmdir(temp_dir)
+        if cap:
+            cap.release()
 
 def generate_frames():
-    """Generator yielding JPEG-encoded frames with detections"""
-    global current_frame, detector
+    """Generator yielding JPEG-encoded frames with detections - optimized"""
+    global current_frame, detector, frame_counter
+    
+    last_detection_time = 0
+    last_detections = []
+    detection_interval = 0.5  # Run detection every 0.5 seconds
     
     while running:
         frame = None
@@ -252,42 +292,52 @@ def generate_frames():
         
         if frame is not None:
             try:
-                # Run detection if model is loaded
-                if detector and detector.model_type != "none":
-                    detections = detector.detect_objects(frame)
-                    frame = detector.draw_detections(frame, detections)
+                current_time = time.time()
+                
+                # Only run detection periodically to save CPU
+                if (detector and detector.model_type != "none" and 
+                    current_time - last_detection_time > detection_interval):
                     
-                    # Log detections (less frequently to avoid spam)
-                    if detections and time.time() % 2 < 0.2:  # Log every ~2 seconds
-                        det_summary = [f"{d['class_name']}({d['confidence']:.2f})" for d in detections]
+                    detections = detector.detect_objects(frame)
+                    last_detections = detections
+                    last_detection_time = current_time
+                    
+                    # Log detections less frequently
+                    if detections:
+                        det_summary = [f"{d['class_name']}({d['confidence']:.2f})" for d in detections[:3]]
                         logger.info(f"Detections: {', '.join(det_summary)}")
                 
-                # Add status text to frame
+                # Always draw the last detections
+                if last_detections:
+                    frame = detector.draw_detections(frame, last_detections)
+                
+                # Add status text with smaller font
                 status_text = f"Model: {detector.model_type if detector else 'none'}"
-                cv2.putText(frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                cv2.putText(frame, status_text, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 
                 # Add timestamp
                 timestamp = time.strftime("%H:%M:%S")
-                cv2.putText(frame, timestamp, (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(frame, timestamp, (5, frame.shape[0] - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
                 
             except Exception as e:
                 logger.error(f"Detection error: {e}")
-                # Add error text to frame
-                cv2.putText(frame, "Detection Error", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame, "Detection Error", (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
         else:
             # Create placeholder frame
-            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            frame = np.zeros((240, 320, 3), dtype=np.uint8)
             text = "Waiting for camera..."
-            cv2.putText(frame, text, (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(frame, text, (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
         
-        # Encode frame to JPEG
-        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        # Encode frame to JPEG with lower quality for speed
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         if ret:
             frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         
-        time.sleep(0.1)  # ~10 FPS stream rate
+        # Control stream rate
+        time.sleep(0.1)  # ~10 FPS stream
 
 @app.route('/')
 def index():
@@ -312,7 +362,7 @@ def signal_handler(sig, frame):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Object Detection Camera Stream Server'
+        description='Optimized Object Detection Camera Stream Server for Raspberry Pi'
     )
     parser.add_argument(
         '--port', type=int, default=8000,
@@ -326,6 +376,10 @@ def parse_args():
         '--confidence', type=float, default=0.5,
         help='Confidence threshold for detections (default: 0.5)'
     )
+    parser.add_argument(
+        '--input-size', type=int, default=320,
+        help='Input size for model (default: 320 for Pi 3, try 416 or 640 for Pi 4)'
+    )
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -334,25 +388,27 @@ if __name__ == '__main__':
     
     args = parse_args()
     
-    # Initialize detector
-    logger.info("Initializing object detector...")
-    detector = YOLODetector(args.model, args.confidence)
+    # Initialize detector with optimizations
+    logger.info("Initializing optimized object detector...")
+    detector = YOLODetector(args.model, args.confidence, args.input_size)
     
     # Start camera thread
-    logger.info("Starting camera capture thread...")
+    logger.info("Starting optimized camera capture thread...")
     camera_thread = threading.Thread(target=camera_capture_thread)
     camera_thread.daemon = True
     camera_thread.start()
     
-    # Wait a moment for camera to initialize
-    time.sleep(3)
+    # Wait for camera to initialize
+    time.sleep(2)
     
-    logger.info(f"Starting detection stream server on port {args.port}")
+    logger.info(f"Starting optimized detection stream server on port {args.port}")
     logger.info(f"Model type: {detector.model_type}")
+    logger.info(f"Input size: {args.input_size}x{args.input_size}")
     logger.info(f"Access the stream at http://<YOUR_PI_IP>:{args.port}")
     
     try:
-        app.run(host='0.0.0.0', port=args.port, threaded=True)
+        # Use a more efficient WSGI server for production
+        app.run(host='0.0.0.0', port=args.port, threaded=True, debug=False)
     except Exception as e:
         logger.error(f"Server error: {e}")
     finally:
