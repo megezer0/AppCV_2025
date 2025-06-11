@@ -34,7 +34,7 @@ frame_counter = 0
 class YOLODetector:
     def __init__(self, model_path=None, confidence_threshold=0.5, input_size=320):
         self.conf_threshold = confidence_threshold
-        self.input_size = input_size  # Smaller input size for Pi 3
+        self.requested_input_size = input_size  # User requested size
         
         if model_path and Path(model_path).exists():
             # Load custom ONNX model with optimizations
@@ -57,12 +57,35 @@ class YOLODetector:
             self.class_names = ['stop_sign', 'custom_object_1', 'custom_object_2']
             self.input_name = self.session.get_inputs()[0].name
             self.input_shape = self.session.get_inputs()[0].shape
+            
+            # Extract actual input size from model (override user setting for custom models)
+            if len(self.input_shape) >= 4:
+                model_input_height = self.input_shape[2]
+                model_input_width = self.input_shape[3]
+                
+                # Use the model's required input size
+                self.input_size = model_input_width  # Assuming square input
+                
+                if self.input_size != self.requested_input_size:
+                    logger.warning(f"Model requires {self.input_size}x{self.input_size} input, overriding requested {self.requested_input_size}x{self.requested_input_size}")
+                    if self.input_size > 416:
+                        logger.warning("Large input size detected - this may be slow on Pi 3. Consider using a model trained with smaller input size.")
+                
+                logger.info(f"Model input shape: {self.input_shape}")
+                logger.info(f"Using input size: {self.input_size}x{self.input_size}")
+            else:
+                logger.error(f"Unexpected input shape: {self.input_shape}")
+                self.input_size = 640  # Default fallback
+                
         else:
             # Load YOLOv8n model with optimizations
             try:
                 from ultralytics import YOLO
                 logger.info("Loading YOLOv8n pretrained model")
                 self.yolo_model = YOLO('yolov8n.pt')
+                
+                # Use requested input size for YOLOv8 (it's flexible)
+                self.input_size = self.requested_input_size
                 
                 # Configure for lower resource usage
                 self.yolo_model.overrides['imgsz'] = self.input_size
@@ -81,9 +104,17 @@ class YOLODetector:
                 logger.error("Ultralytics not available and no custom model provided")
                 self.model_type = "none"
                 self.class_names = []
+                self.input_size = self.requested_input_size
         
         logger.info(f"Detector initialized with {len(self.class_names)} classes")
-        logger.info(f"Input size: {self.input_size}x{self.input_size}")
+        logger.info(f"Final input size: {self.input_size}x{self.input_size}")
+        
+        # Performance warning for Pi 3
+        if self.input_size >= 640:
+            logger.warning("⚠️  Large input size may cause slow performance on Pi 3!")
+            logger.warning("   Consider running with lower detection frequency or smaller model")
+        elif self.input_size >= 416:
+            logger.warning("⚠️  Medium input size - expect moderate performance on Pi 3")
     
     def preprocess_frame_onnx(self, frame):
         """Prepare frame for ONNX YOLO inference - optimized"""
@@ -437,7 +468,17 @@ def generate_frames():
     
     last_detection_time = 0
     last_detections = []
-    detection_interval = 0.5  # Run detection every 0.5 seconds
+    
+    # Adjust detection interval based on input size for performance
+    if detector and detector.input_size >= 640:
+        detection_interval = 1.0  # 1 second for large models
+        logger.info("Using 1.0s detection interval for large input size")
+    elif detector and detector.input_size >= 416:
+        detection_interval = 0.75  # 0.75 seconds for medium models
+        logger.info("Using 0.75s detection interval for medium input size")
+    else:
+        detection_interval = 0.5  # 0.5 seconds for small models
+        logger.info("Using 0.5s detection interval for small input size")
     
     while running:
         frame = None
@@ -470,6 +511,8 @@ def generate_frames():
                 
                 # Add status text with smaller font
                 status_text = f"Model: {detector.model_type if detector else 'none'}"
+                if detector:
+                    status_text += f" ({detector.input_size}x{detector.input_size})"
                 cv2.putText(frame, status_text, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 
                 # Add timestamp
@@ -535,7 +578,7 @@ def parse_args():
     )
     parser.add_argument(
         '--input-size', type=int, default=320,
-        help='Input size for model (default: 320 for Pi 3, try 416 or 640 for Pi 4)'
+        help='Input size for YOLOv8 model (default: 320). Custom ONNX models use their trained input size automatically.'
     )
     return parser.parse_args()
 
@@ -636,8 +679,16 @@ if __name__ == '__main__':
     
     logger.info(f"Starting optimized detection stream server on port {args.port}")
     logger.info(f"Model type: {detector.model_type}")
-    logger.info(f"Input size: {args.input_size}x{args.input_size}")
+    logger.info(f"Actual input size: {detector.input_size}x{detector.input_size}")
     logger.info(f"Access the stream at http://<YOUR_PI_IP>:{args.port}")
+    
+    # Performance recommendations
+    if detector.input_size >= 640:
+        logger.info("💡 Performance tip: Detection runs every 1.0 second due to large input size")
+    elif detector.input_size >= 416:
+        logger.info("💡 Performance tip: Detection runs every 0.75 seconds due to medium input size")
+    else:
+        logger.info("💡 Performance tip: Detection runs every 0.5 seconds for optimal speed")
     
     try:
         # Use a more efficient WSGI server for production
