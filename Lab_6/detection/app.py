@@ -2,8 +2,10 @@
 import argparse
 import time
 import logging
+import subprocess
 import threading
 import os
+import tempfile
 from flask import Flask, render_template, Response
 import cv2
 import numpy as np
@@ -219,60 +221,215 @@ class YOLODetector:
         return frame
 
 def camera_capture_thread():
-    """Optimized camera capture using OpenCV VideoCapture"""
+    """Multi-method camera capture with fallbacks"""
     global current_frame, running
     
-    logger.info("Initializing camera with OpenCV...")
+    # Method 1: Try OpenCV VideoCapture (works with USB cameras)
+    logger.info("Trying OpenCV VideoCapture...")
+    success = try_opencv_camera()
     
-    # Try different camera backends for Pi
-    backends_to_try = [cv2.CAP_V4L2, cv2.CAP_ANY]
+    if success:
+        return
+    
+    # Method 2: Try libcamera-vid streaming (works with Pi Camera)
+    logger.info("OpenCV failed, trying libcamera-vid streaming...")
+    success = try_libcamera_streaming()
+    
+    if success:
+        return
+        
+    # Method 3: Fallback to optimized libcamera-still
+    logger.info("Streaming failed, using optimized libcamera-still...")
+    try_libcamera_still_optimized()
+
+def try_opencv_camera():
+    """Try OpenCV VideoCapture method"""
+    global current_frame, running
+    
+    # Try different camera backends
+    backends_to_try = [cv2.CAP_V4L2, cv2.CAP_GSTREAMER, cv2.CAP_ANY]
     cap = None
     
     for backend in backends_to_try:
         try:
             cap = cv2.VideoCapture(0, backend)
             if cap.isOpened():
-                logger.info(f"Camera opened with backend: {backend}")
-                break
+                # Test if we can actually read a frame
+                ret, test_frame = cap.read()
+                if ret and test_frame is not None:
+                    logger.info(f"OpenCV camera working with backend: {backend}")
+                    break
+                else:
+                    cap.release()
+                    cap = None
         except:
+            if cap:
+                cap.release()
+            cap = None
             continue
     
     if cap is None or not cap.isOpened():
-        logger.error("Failed to open camera")
-        return
+        return False
     
-    # Optimize camera settings for Pi 3
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)   # Lower resolution
+    # Optimize camera settings
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-    cap.set(cv2.CAP_PROP_FPS, 15)            # Lower FPS
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)      # Reduce buffer
+    cap.set(cv2.CAP_PROP_FPS, 15)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     
-    # Verify settings
-    actual_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-    actual_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    actual_fps = cap.get(cv2.CAP_PROP_FPS)
-    
-    logger.info(f"Camera settings: {actual_width}x{actual_height} @ {actual_fps} FPS")
+    logger.info("Using OpenCV VideoCapture")
     
     try:
+        consecutive_failures = 0
         while running:
             ret, frame = cap.read()
             
             if ret and frame is not None:
                 with frame_lock:
                     current_frame = frame.copy()
+                consecutive_failures = 0
             else:
-                logger.warning("Failed to read frame")
+                consecutive_failures += 1
+                if consecutive_failures > 10:
+                    logger.error("Too many consecutive frame failures, OpenCV method failed")
+                    cap.release()
+                    return False
                 time.sleep(0.1)
             
-            # Moderate capture rate
-            time.sleep(0.05)  # ~20 FPS capture, but detection will be slower
+            time.sleep(0.05)
             
     except Exception as e:
-        logger.error(f"Camera thread error: {e}")
+        logger.error(f"OpenCV camera error: {e}")
+        cap.release()
+        return False
     finally:
         if cap:
             cap.release()
+    
+    return True
+
+def try_libcamera_streaming():
+    """Try libcamera-vid with ffmpeg streaming"""
+    global current_frame, running
+    
+    try:
+        import subprocess
+        
+        # Start libcamera-vid streaming to stdout
+        cmd = [
+            "libcamera-vid",
+            "-t", "0",  # Infinite timeout
+            "--width", "320",
+            "--height", "240",
+            "--framerate", "15",
+            "-o", "-",  # Output to stdout
+            "--codec", "mjpeg",
+            "--inline",
+            "-n"  # No preview
+        ]
+        
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Test if the process starts successfully
+        time.sleep(1)
+        if process.poll() is not None:
+            logger.warning("libcamera-vid failed to start")
+            return False
+        
+        logger.info("Using libcamera-vid streaming")
+        
+        buffer = b""
+        while running:
+            try:
+                chunk = process.stdout.read(1024)
+                if not chunk:
+                    break
+                
+                buffer += chunk
+                
+                # Look for JPEG boundaries
+                start = buffer.find(b'\xff\xd8')
+                end = buffer.find(b'\xff\xd9')
+                
+                if start != -1 and end != -1 and end > start:
+                    # Extract JPEG frame
+                    jpeg_data = buffer[start:end+2]
+                    buffer = buffer[end+2:]
+                    
+                    # Decode JPEG
+                    nparr = np.frombuffer(jpeg_data, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    
+                    if frame is not None:
+                        with frame_lock:
+                            current_frame = frame.copy()
+                
+            except Exception as e:
+                logger.error(f"Streaming error: {e}")
+                break
+        
+        process.terminate()
+        return True
+        
+    except Exception as e:
+        logger.error(f"libcamera streaming setup failed: {e}")
+        return False
+
+def try_libcamera_still_optimized():
+    """Optimized libcamera-still method"""
+    global current_frame, running
+    
+    import tempfile
+    import subprocess
+    import os
+    
+    # Create persistent temp file (don't recreate each time)
+    temp_dir = tempfile.mkdtemp()
+    temp_image_path = os.path.join(temp_dir, "frame.jpg")
+    
+    logger.info(f"Using optimized libcamera-still with temp file: {temp_image_path}")
+    
+    try:
+        while running:
+            # Faster capture with minimal settings
+            cmd = [
+                "libcamera-still",
+                "-n",  # No preview
+                "--width", "320",
+                "--height", "240",
+                "--timeout", "50",  # Very quick capture
+                "--immediate",  # Don't wait for auto-settings
+                "-q", "80",  # Lower quality for speed
+                "-o", temp_image_path
+            ]
+            
+            try:
+                # Use faster method with no output capture
+                result = subprocess.run(cmd, capture_output=False, timeout=1, 
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                if result.returncode == 0 and os.path.exists(temp_image_path):
+                    # Read the image
+                    frame = cv2.imread(temp_image_path)
+                    if frame is not None:
+                        with frame_lock:
+                            current_frame = frame.copy()
+                
+            except subprocess.TimeoutExpired:
+                logger.warning("libcamera-still timeout")
+            except Exception as e:
+                logger.error(f"Capture error: {e}")
+            
+            # Faster cycle time
+            time.sleep(0.15)  # ~6-7 FPS capture
+            
+    except Exception as e:
+        logger.error(f"libcamera-still error: {e}")
+    finally:
+        # Cleanup
+        if os.path.exists(temp_image_path):
+            os.remove(temp_image_path)
+        os.rmdir(temp_dir)
 
 def generate_frames():
     """Generator yielding JPEG-encoded frames with detections - optimized"""
@@ -382,11 +539,87 @@ def parse_args():
     )
     return parser.parse_args()
 
+def check_camera_availability():
+    """Check what cameras are available"""
+    logger.info("Checking camera availability...")
+    
+    # Check for video devices
+    video_devices = []
+    for i in range(5):
+        device_path = f"/dev/video{i}"
+        if os.path.exists(device_path):
+            video_devices.append(device_path)
+    
+    if video_devices:
+        logger.info(f"Found video devices: {video_devices}")
+    else:
+        logger.warning("No /dev/video* devices found")
+    
+    # Check if libcamera is available
+    try:
+        result = subprocess.run(["libcamera-hello", "--version"], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            logger.info("libcamera is available")
+        else:
+            logger.warning("libcamera-hello failed")
+    except:
+        logger.warning("libcamera tools not found")
+    
+    # Check if camera module is detected
+    try:
+        result = subprocess.run(["vcgencmd", "get_camera"], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            logger.info(f"Camera status: {result.stdout.strip()}")
+        else:
+            logger.warning("Could not check camera status")
+    except:
+        logger.warning("vcgencmd not available")
+
+def test_camera_methods():
+    """Test different camera capture methods to see which works"""
+    logger.info("Testing camera methods...")
+    
+    # Test 1: Quick libcamera test
+    try:
+        result = subprocess.run([
+            "libcamera-still", "-n", "--timeout", "100", 
+            "--width", "320", "--height", "240", "-o", "/tmp/test_camera.jpg"
+        ], capture_output=True, timeout=3)
+        
+        if result.returncode == 0 and os.path.exists("/tmp/test_camera.jpg"):
+            logger.info("✓ libcamera-still works")
+            os.remove("/tmp/test_camera.jpg")
+        else:
+            logger.warning("✗ libcamera-still failed")
+    except:
+        logger.warning("✗ libcamera-still not available or failed")
+    
+    # Test 2: OpenCV test
+    try:
+        cap = cv2.VideoCapture(0)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                logger.info("✓ OpenCV VideoCapture works")
+            else:
+                logger.warning("✗ OpenCV VideoCapture opens but can't read frames")
+            cap.release()
+        else:
+            logger.warning("✗ OpenCV VideoCapture failed to open")
+    except:
+        logger.warning("✗ OpenCV VideoCapture exception")
+
 if __name__ == '__main__':
     # Set up signal handler
     signal.signal(signal.SIGINT, signal_handler)
     
     args = parse_args()
+    
+    # Check camera availability first
+    check_camera_availability()
+    test_camera_methods()
     
     # Initialize detector with optimizations
     logger.info("Initializing optimized object detector...")
@@ -399,7 +632,7 @@ if __name__ == '__main__':
     camera_thread.start()
     
     # Wait for camera to initialize
-    time.sleep(2)
+    time.sleep(5)  # Give more time for initialization
     
     logger.info(f"Starting optimized detection stream server on port {args.port}")
     logger.info(f"Model type: {detector.model_type}")
