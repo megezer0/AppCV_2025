@@ -2,11 +2,15 @@
 import argparse
 import time
 import logging
+import subprocess
+import threading
 from flask import Flask, render_template, Response
 import cv2
 import numpy as np
 import onnxruntime as ort
 from pathlib import Path
+import signal
+import sys
 
 # Configure logging
 logging.basicConfig(
@@ -18,10 +22,12 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
-# Global variables for model and camera
+# Global variables
 detector = None
-camera_available = False
-picam2 = None
+camera_process = None
+current_frame = None
+frame_lock = threading.Lock()
+running = True
 
 class YOLODetector:
     def __init__(self, model_path=None, confidence_threshold=0.5):
@@ -32,26 +38,34 @@ class YOLODetector:
             logger.info(f"Loading custom model: {model_path}")
             self.session = ort.InferenceSession(model_path)
             self.model_type = "custom"
-            # You'll need to adjust these based on your training
             self.class_names = ['stop_sign', 'custom_object_1', 'custom_object_2']
+            self.input_name = self.session.get_inputs()[0].name
+            self.input_shape = self.session.get_inputs()[0].shape
         else:
-            # Load YOLOv8n model (you'll need to download this)
+            # Load YOLOv8n model
             try:
                 from ultralytics import YOLO
                 logger.info("Loading YOLOv8n pretrained model")
                 self.yolo_model = YOLO('yolov8n.pt')
                 self.model_type = "yolov8"
-                # COCO dataset classes (subset relevant to our use case)
-                self.class_names = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
-                                  'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow']
+                # Subset of COCO classes most relevant for demonstration
+                self.class_names = [
+                    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 
+                    'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench',
+                    'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 
+                    'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+                    'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+                    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup',
+                    'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange',
+                    'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+                    'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
+                    'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
+                    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+                ]
             except ImportError:
                 logger.error("Ultralytics not available and no custom model provided")
                 self.model_type = "none"
-        
-        if self.model_type == "custom":
-            self.input_name = self.session.get_inputs()[0].name
-            self.input_shape = self.session.get_inputs()[0].shape
-            logger.info(f"Custom model input shape: {self.input_shape}")
+                self.class_names = []
         
         logger.info(f"Detector initialized with {len(self.class_names)} classes")
     
@@ -170,63 +184,78 @@ class YOLODetector:
         
         return frame
 
-def init_camera():
-    """Initialize camera"""
-    global camera_available, picam2
+def camera_capture_thread():
+    """Background thread to capture frames from libcamera"""
+    global current_frame, camera_process, running
+    
+    # Start libcamera-vid process
+    camera_cmd = [
+        "libcamera-vid",
+        "-t", "0",  # Run indefinitely
+        "--width", "640",
+        "--height", "480",
+        "--framerate", "30",
+        "-o", "-",  # Output to stdout
+        "--codec", "mjpeg"
+    ]
     
     try:
-        # Try picamera2 first (Raspberry Pi OS Bookworm)
-        from picamera2 import Picamera2
-        picam2 = Picamera2()
-        config = picam2.create_video_configuration(main={"size": (640, 480)})
-        picam2.configure(config)
-        picam2.start()
-        camera_available = True
-        logger.info("Picamera2 initialized successfully")
-        return "picamera2"
-    except Exception as e:
-        logger.warning(f"Picamera2 failed: {e}")
+        camera_process = subprocess.Popen(
+            camera_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=0
+        )
+        logger.info("Camera process started successfully")
         
-    try:
-        # Fallback to OpenCV
-        cap = cv2.VideoCapture(0)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            camera_available = True
-            picam2 = cap  # Store in same variable for simplicity
-            logger.info("OpenCV camera initialized successfully")
-            return "opencv"
-        else:
-            raise Exception("OpenCV camera not available")
+        # Read MJPEG stream
+        bytes_buffer = b''
+        while running:
+            chunk = camera_process.stdout.read(1024)
+            if not chunk:
+                break
+                
+            bytes_buffer += chunk
+            
+            # Look for JPEG boundaries
+            start = bytes_buffer.find(b'\xff\xd8')  # JPEG start
+            end = bytes_buffer.find(b'\xff\xd9')    # JPEG end
+            
+            if start != -1 and end != -1 and end > start:
+                # Extract complete JPEG
+                jpeg_data = bytes_buffer[start:end+2]
+                bytes_buffer = bytes_buffer[end+2:]
+                
+                # Decode JPEG
+                try:
+                    frame = cv2.imdecode(np.frombuffer(jpeg_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        with frame_lock:
+                            current_frame = frame.copy()
+                except Exception as e:
+                    logger.warning(f"Frame decode error: {e}")
+                    continue
+    
     except Exception as e:
-        logger.error(f"All camera initialization methods failed: {e}")
-        camera_available = False
-        return None
+        logger.error(f"Camera thread error: {e}")
+    finally:
+        if camera_process:
+            camera_process.terminate()
 
 def generate_frames():
     """Generator yielding JPEG-encoded frames with detections"""
-    global detector, camera_available, picam2
+    global current_frame, detector
     
-    camera_type = init_camera()
-    
-    while True:
-        if camera_available:
+    while running:
+        frame = None
+        
+        # Get current frame
+        with frame_lock:
+            if current_frame is not None:
+                frame = current_frame.copy()
+        
+        if frame is not None:
             try:
-                if camera_type == "picamera2":
-                    # Capture from picamera2
-                    frame = picam2.capture_array()
-                    # Convert from RGB to BGR for OpenCV
-                    if frame.shape[2] == 3:
-                        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                elif camera_type == "opencv":
-                    # Capture from OpenCV
-                    ret, frame = picam2.read()
-                    if not ret:
-                        raise Exception("Failed to read from camera")
-                else:
-                    raise Exception("No camera available")
-                
                 # Run detection if model is loaded
                 if detector and detector.model_type != "none":
                     detections = detector.detect_objects(frame)
@@ -239,36 +268,23 @@ def generate_frames():
                 
                 # Add status text to frame
                 status_text = f"Model: {detector.model_type if detector else 'none'}"
-                cv2.putText(frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                
-                if detector and detector.model_type != "none":
-                    det_count = len(detector.detect_objects(frame)) if detector else 0
-                    det_text = f"Objects detected: {det_count}"
-                    cv2.putText(frame, det_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
             except Exception as e:
-                logger.error(f"Error capturing frame: {e}")
-                # Create error frame
-                frame = np.zeros((480, 640, 3), dtype=np.uint8)
-                text = "Camera Error"
-                cv2.putText(frame, text, (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                logger.error(f"Detection error: {e}")
         else:
             # Create placeholder frame
             frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            text = "No camera detected"
-            cv2.putText(frame, text, (180, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            text = "Starting camera..."
+            cv2.putText(frame, text, (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
         
         # Encode frame to JPEG
-        ret, buffer = cv2.imencode('.jpg', frame)
-        if not ret:
-            logger.warning("Frame encoding failed")
-            continue
-            
-        frame_bytes = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if ret:
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         
-        # Control frame rate
         time.sleep(0.1)  # ~10 FPS
 
 @app.route('/')
@@ -284,6 +300,15 @@ def video_feed():
         generate_frames(),
         mimetype='multipart/x-mixed-replace; boundary=frame'
     )
+
+def signal_handler(sig, frame):
+    """Handle Ctrl+C gracefully"""
+    global running, camera_process
+    logger.info("Shutting down...")
+    running = False
+    if camera_process:
+        camera_process.terminate()
+    sys.exit(0)
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -304,11 +329,23 @@ def parse_args():
     return parser.parse_args()
 
 if __name__ == '__main__':
+    # Set up signal handler
+    signal.signal(signal.SIGINT, signal_handler)
+    
     args = parse_args()
     
     # Initialize detector
     logger.info("Initializing object detector...")
     detector = YOLODetector(args.model, args.confidence)
+    
+    # Start camera thread
+    logger.info("Starting camera capture thread...")
+    camera_thread = threading.Thread(target=camera_capture_thread)
+    camera_thread.daemon = True
+    camera_thread.start()
+    
+    # Wait a moment for camera to initialize
+    time.sleep(2)
     
     logger.info(f"Starting detection stream server on port {args.port}")
     logger.info(f"Model type: {detector.model_type}")
@@ -316,17 +353,9 @@ if __name__ == '__main__':
     
     try:
         app.run(host='0.0.0.0', port=args.port, threaded=True)
-    except KeyboardInterrupt:
-        logger.info("Server stopped by user")
     except Exception as e:
         logger.error(f"Server error: {e}")
     finally:
-        # Cleanup camera
-        if camera_available and picam2:
-            try:
-                if hasattr(picam2, 'stop'):
-                    picam2.stop()
-                elif hasattr(picam2, 'release'):
-                    picam2.release()
-            except:
-                pass
+        running = False
+        if camera_process:
+            camera_process.terminate()
