@@ -119,46 +119,57 @@ class YOLODetector:
         return input_tensor
     
     def postprocess_onnx_detections(self, outputs, original_shape):
-        """Convert ONNX model outputs to bounding boxes - optimized"""
-        predictions = outputs[0][0]
-        
+        """
+        Parse the Ultralytics-exported ONNX head:
+            shape  : (1, 8, 8400)  --> B x (4 + nc) x N
+            layout : [cx, cy, w, h, p0..p3]  (pixel coords, no obj score)
+        Returns a list of dicts in xyxy image space.
+        """
+        # --- 1. reshape ----------------------------------------------------------
+        pred = outputs[0]                       # (1, 8, 8400)
+        pred = np.transpose(pred, (0, 2, 1))[0] # (8400, 8)
+
+        xywh   = pred[:, :4]          # pixel-space box (cx,cy,w,h)
+        scores = pred[:, 4:]          # per-class confidences (already multiplied!)
+
+        conf   = scores.max(1)
+        cls_id = scores.argmax(1)
+
+        # --- 2. threshold --------------------------------------------------------
+        keep = conf > self.conf_threshold
+        xywh, conf, cls_id = xywh[keep], conf[keep], cls_id[keep]
+
+        if not len(conf):
+            return []
+
+        # --- 3. cx,cy,w,h  →  x1,y1,x2,y2 ---------------------------------------
+        boxes = np.empty_like(xywh)
+        boxes[:, 0] = xywh[:, 0] - xywh[:, 2] / 2  # x1
+        boxes[:, 1] = xywh[:, 1] - xywh[:, 3] / 2  # y1
+        boxes[:, 2] = xywh[:, 0] + xywh[:, 2] / 2  # x2
+        boxes[:, 3] = xywh[:, 1] + xywh[:, 3] / 2  # y2
+
+        # --- 4. scale back to actual frame size ---------------------------------
+        ih, iw = self.input_size, self.input_size
+        H, W   = original_shape[:2]
+        boxes[:, [0, 2]] *= W / iw
+        boxes[:, [1, 3]] *= H / ih
+
+        # --- 5. (optional) NMS ---------------------------------------------------
+        idxs = cv2.dnn.NMSBoxes(
+            boxes.tolist(), conf.tolist(),
+            self.conf_threshold, 0.45)          # IoU threshold
+        idxs = idxs.flatten() if len(idxs) else []
+
         detections = []
-        h, w = original_shape[:2]
-        
-        confidences = predictions[:, 4]
-        valid_indices = confidences > self.conf_threshold
-        valid_predictions = predictions[valid_indices]
-        
-        for detection in valid_predictions:
-            confidence = detection[4]
-            class_scores = detection[5:]
-            class_id = np.argmax(class_scores)
-            class_confidence = class_scores[class_id] * confidence
-            
-            if class_confidence > self.conf_threshold and class_id < len(self.class_names):
-                x_center, y_center, width, height = detection[:4]
-                x_center *= w
-                y_center *= h
-                width *= w
-                height *= h
-                
-                x1 = int(x_center - width / 2)
-                y1 = int(y_center - height / 2)
-                x2 = int(x_center + width / 2)
-                y2 = int(y_center + height / 2)
-                
-                x1 = max(0, x1)
-                y1 = max(0, y1)
-                x2 = min(w, x2)
-                y2 = min(h, y2)
-                
-                detections.append({
-                    'class_id': class_id,
-                    'class_name': self.class_names[class_id],
-                    'confidence': class_confidence,
-                    'bbox': [x1, y1, x2, y2]
-                })
-        
+        for i in idxs:
+            x1, y1, x2, y2 = boxes[i]
+            detections.append({
+                'class_id'   : int(cls_id[i]),
+                'class_name' : self.class_names[int(cls_id[i])],
+                'confidence' : float(conf[i]),
+                'bbox'       : [int(x1), int(y1), int(x2), int(y2)]
+            })
         return detections
     
     def detect_objects(self, frame):
