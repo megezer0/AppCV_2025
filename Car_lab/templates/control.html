@@ -109,6 +109,39 @@
             font-family: monospace;
         }
         
+        .activity-log {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #000;
+            border: 1px solid #333;
+            border-radius: 5px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        
+        .log-entry.command {
+            background-color: #003300;
+            color: #00ff00;
+        }
+        
+        .log-entry.status {
+            background-color: #000033;
+            color: #6666ff;
+        }
+        
+        .log-entry.error {
+            background-color: #330000;
+            color: #ff6666;
+        }
+        
         .instructions {
             margin-top: 20px;
             padding: 15px;
@@ -187,14 +220,17 @@
             </button>
             
             <div class="status-panel">
-                <h4>Status</h4>
+                <h4>System Status</h4>
                 <div class="status-item">Last Command: <span id="lastCommand">none</span></div>
                 <div class="status-item">Commands Sent: <span id="commandCount">0</span></div>
                 <div class="status-item">Robot Status: <span id="robotStatus">unknown</span></div>
                 <div class="status-item">Connection: <span id="connectionStatus">checking...</span></div>
+                
+                <h4>Activity Log</h4>
+                <div class="activity-log" id="activityLog">
+                    <div class="log-entry status">System started - waiting for commands...</div>
+                </div>
             </div>
-            
-            <div id="messageArea"></div>
             
             <div class="instructions">
                 <h4>Instructions:</h4>
@@ -213,6 +249,23 @@
     <script>
         // Global variables
         let isCommandActive = false;
+        
+        // Activity logging functions
+        function addLogEntry(message, type = 'status') {
+            const logContainer = document.getElementById('activityLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // Keep only last 50 entries
+            while (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+        }
         
         // Keyboard event listeners
         document.addEventListener('keydown', function(event) {
@@ -246,35 +299,56 @@
             isCommandActive = true;
             highlightButton(direction);
             
+            // Log the command
+            const commandText = {
+                'forward': 'Moving forward',
+                'backward': 'Moving backward', 
+                'left': 'Turning left',
+                'right': 'Turning right',
+                'stop': 'Emergency stop'
+            }[direction] || `Unknown command: ${direction}`;
+            
+            addLogEntry(`Command: ${commandText}`, 'command');
+            
             fetch(`/move/${direction}`)
                 .then(response => response.json())
                 .then(data => {
                     console.log('Command result:', data);
-                    showMessage(data.message, data.success ? 'success' : 'error');
+                    if (data.success) {
+                        addLogEntry(`✓ ${data.message}`, 'status');
+                    } else {
+                        addLogEntry(`✗ ${data.message}`, 'error');
+                    }
                     updateStatus();
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    showMessage('Command failed: ' + error, 'error');
+                    addLogEntry(`✗ Command failed: ${error}`, 'error');
                 })
                 .finally(() => {
                     setTimeout(() => {
                         isCommandActive = false;
                         clearButtonHighlight();
+                        addLogEntry('Robot stopped', 'status');
                     }, 600);
                 });
         }
         
         // Test robot connection
         function testRobot() {
+            addLogEntry('Testing robot connection...', 'command');
             fetch('/test')
                 .then(response => response.json())
                 .then(data => {
-                    showMessage(data.message, data.success ? 'success' : 'error');
+                    if (data.success) {
+                        addLogEntry(`✓ ${data.message}`, 'status');
+                    } else {
+                        addLogEntry(`✗ ${data.message}`, 'error');
+                    }
                     updateStatus();
                 })
                 .catch(error => {
-                    showMessage('Test failed: ' + error, 'error');
+                    addLogEntry(`✗ Test failed: ${error}`, 'error');
                 });
         }
         
@@ -294,17 +368,6 @@
             });
         }
         
-        // Show message to user
-        function showMessage(text, type) {
-            const messageArea = document.getElementById('messageArea');
-            messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
-            
-            // Clear message after 3 seconds
-            setTimeout(() => {
-                messageArea.innerHTML = '';
-            }, 3000);
-        }
-        
         // Update status display
         function updateStatus() {
             fetch('/status')
@@ -319,14 +382,18 @@
                 .catch(error => {
                     console.error('Status update failed:', error);
                     document.getElementById('connectionStatus').textContent = 'error';
+                    addLogEntry('Status update failed', 'error');
                 });
         }
         
-        // Update status every 2 seconds
-        setInterval(updateStatus, 2000);
+        // Update status every 3 seconds
+        setInterval(updateStatus, 3000);
         
-        // Initial status update
-        updateStatus();
+        // Initial setup
+        window.addEventListener('load', function() {
+            addLogEntry('Web interface loaded', 'status');
+            updateStatus();
+        });
         
         // Prevent arrow key scrolling
         window.addEventListener("keydown", function(e) {
