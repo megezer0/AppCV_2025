@@ -19,6 +19,12 @@ class RobotController:
             self.previous_frame = None
             self.current_speed = 0.0
             
+            # Debug and performance settings - SYNCHRONIZED
+            self.debug_level = 0
+            self.target_fps = 10  # This controls BOTH processing and display
+            self.last_frame_time = time.time()
+            self.frame_interval = 1.0 / self.target_fps
+            
             # Feature modules (loaded dynamically as students implement them)
             self.line_follower = None
             self.sign_detector = None
@@ -99,32 +105,44 @@ class RobotController:
     
     def process_autonomous_frame(self, frame):
         """
-        Main autonomous processing pipeline - called for each camera frame
-        This is where all the magic happens!
+        Main autonomous processing pipeline with synchronized frame rate control
         """
         if not self.autonomous_mode or not self.picar:
             return frame
             
         try:
+            # CRITICAL: Frame rate control affects BOTH processing AND display
+            current_time = time.time()
+            if current_time - self.last_frame_time < self.frame_interval:
+                # Skip processing this frame to maintain target FPS
+                return frame
+            
+            self.last_frame_time = current_time
             self.frame_counter += 1
             display_frame = frame.copy()
             
-            # Week 1: PID Line Following (runs every frame for smooth control)
+            # Week 1: PID Line Following (runs at controlled frame rate)
             if self.line_follower:
                 try:
-                    steering_angle = self.line_follower.compute_steering_angle(frame)
+                    steering_angle = self.line_follower.compute_steering_angle(
+                        frame, debug_level=self.debug_level
+                    )
                     
-                    # Apply steering and move forward
+                    # Apply steering and move forward at conservative speed
                     self.picar.set_dir_servo_angle(steering_angle)
-                    self.picar.forward(40)  # Constant forward speed
+                    self.picar.forward(30)  # 30% of max speed for safe learning
                     
-                    # Add debug visualization if available
-                    if hasattr(self.line_follower, 'get_debug_overlay'):
-                        display_frame = self.line_follower.get_debug_overlay(display_frame)
+                    # Get debug visualization if available
+                    debug_frame = self.line_follower.get_debug_frame()
+                    if debug_frame is not None:
+                        display_frame = debug_frame
                     
-                    # Show steering angle on display
-                    cv2.putText(display_frame, f"Steering: {steering_angle:.1f}°", 
-                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    # Always show autonomous mode status and frame rate
+                    cv2.putText(display_frame, "AUTO MODE - LINE FOLLOWING", 
+                               (5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                    
+                    cv2.putText(display_frame, f"FPS: {self.target_fps} | Debug: {self.debug_level}", 
+                               (5, display_frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
                                
                 except Exception as e:
                     print(f"Line following error: {e}")
@@ -185,15 +203,28 @@ class RobotController:
             # Store frame for next speed calculation
             self.previous_frame = frame.copy()
             
-            # Always show autonomous mode status
-            cv2.putText(display_frame, "AUTO MODE", 
-                       (display_frame.shape[1] - 120, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            
             return display_frame
             
         except Exception as e:
             print(f"Autonomous processing error: {e}")
             return frame
+    
+    def set_debug_level(self, level):
+        """Set debugging visualization level (0-4)"""
+        self.debug_level = max(0, min(4, level))
+        print(f"Debug level set to: {self.debug_level}")
+    
+    def set_frame_rate(self, fps):
+        """Set target frame rate - affects BOTH processing and display"""
+        self.target_fps = max(1, min(15, fps))
+        self.frame_interval = 1.0 / self.target_fps
+        print(f"Processing and display rate synchronized to: {self.target_fps} fps")
+    
+    def update_pid_parameters(self, kp=None, ki=None, kd=None):
+        """Update PID parameters during runtime"""
+        if self.line_follower:
+            self.line_follower.update_parameters(kp=kp, ki=ki, kd=kd)
+            print(f"PID parameters updated: Kp={kp}, Ki={ki}, Kd={kd}")
     
     def get_feature_status(self):
         """Return current status of all features"""
@@ -201,7 +232,9 @@ class RobotController:
             'autonomous_mode': self.autonomous_mode,
             'features': self.feature_status.copy(),
             'current_speed': self.current_speed,
-            'frame_counter': self.frame_counter
+            'frame_counter': self.frame_counter,
+            'target_fps': self.target_fps,
+            'debug_level': self.debug_level
         }
     
     # =============================================================================

@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiCar-X Control Interface</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+        }
+        
+        .main-content {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .control-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1, h2, h3 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        #videoFeed {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .video-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .control-btn {
+            padding: 15px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .forward { background: #3498db; color: white; }
+        .backward { background: #95a5a6; color: white; }
+        .left { background: #f39c12; color: white; }
+        .right { background: #f39c12; color: white; }
+        .stop { background: #e74c3c; color: white; }
+        
+        .autonomous-controls {
+            margin: 20px 0;
+        }
+        
+        .autonomous-btn {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .start-autonomous {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .stop-autonomous {
+            background: #e67e22;
+            color: white;
+        }
+        
+        .autonomous-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .debug-controls {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 2px solid #e9ecef;
+        }
+        
+        .control-group {
+            margin: 15px 0;
+        }
+        
+        .control-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #495057;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .value-display {
+            min-width: 40px;
+            text-align: center;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .pid-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .pid-input {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .pid-input label {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .pid-input input {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .status-panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .status-label {
+            font-weight: bold;
+        }
+        
+        .status-value {
+            color: #007bff;
+        }
+        
+        .feature-status {
+            margin: 15px 0;
+        }
+        
+        .feature-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #ddd;
+        }
+        
+        .feature-active {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        
+        .feature-inactive {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+        
+        .feature-error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        
+        .log-panel {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .keyboard-hint {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+            border-left: 4px solid #2196f3;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .pid-controls {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <h1>🚗 PiCar-X Control Interface</h1>
+            
+            <div class="video-container">
+                <img id="videoFeed" src="/video_feed" alt="Robot Camera Feed">
+                <div class="video-overlay" id="videoOverlay">
+                    Live Feed - Debug Level: <span id="overlayDebugLevel">0</span>
+                </div>
+            </div>
+            
+            <div class="keyboard-hint">
+                💡 <strong>Keyboard Controls:</strong> Use WASD keys for movement (W=forward, A=left, S=backward, D=right, F=stop)
+            </div>
+            
+            <div class="controls-grid">
+                <div></div>
+                <button class="control-btn forward" onclick="moveRobot('forward')" data-key="w">
+                    ⬆️ Forward (W)
+                </button>
+                <div></div>
+                
+                <button class="control-btn left" onclick="moveRobot('left')" data-key="a">
+                    ⬅️ Left (A)
+                </button>
+                <button class="control-btn stop" onclick="moveRobot('stop')" data-key="f">
+                    🛑 STOP (F)
+                </button>
+                <button class="control-btn right" onclick="moveRobot('right')" data-key="d">
+                    ➡️ Right (D)
+                </button>
+                
+                <div></div>
+                <button class="control-btn backward" onclick="moveRobot('backward')" data-key="s">
+                    ⬇️ Backward (S)
+                </button>
+                <div></div>
+            </div>
+            
+            <div class="autonomous-controls">
+                <h3>🤖 Autonomous Mode</h3>
+                <button class="autonomous-btn start-autonomous" onclick="startAutonomous()">
+                    🚀 Start Line Following
+                </button>
+                <button class="autonomous-btn stop-autonomous" onclick="stopAutonomous()">
+                    ⏹️ Stop Autonomous Mode
+                </button>
+            </div>
+            
+            <div id="logPanel" class="log-panel">
+                <div>System ready - Manual control active</div>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <div class="control-panel">
+                <h3>📊 Robot Status</h3>
+                <div class="status-panel">
+                    <div class="status-item">
+                        <span class="status-label">Mode:</span>
+                        <span class="status-value" id="currentMode">Manual</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Last Command:</span>
+                        <span class="status-value" id="lastCommand">none</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Commands Sent:</span>
+                        <span class="status-value" id="commandCount">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Robot Connected:</span>
+                        <span class="status-value" id="robotConnected">Unknown</span>
+                    </div>
+                </div>
+                
+                <div class="feature-status">
+                    <h4>📋 Feature Status</h4>
+                    <div class="feature-item feature-inactive" id="lineFollowingStatus">
+                        <span>Line Following</span>
+                        <span>Not Implemented</span>
+                    </div>
+                    <div class="feature-item feature-inactive" id="signDetectionStatus">
+                        <span>Sign Detection</span>
+                        <span>Not Implemented</span>
+                    </div>
+                    <div class="feature-item feature-inactive" id="speedEstimationStatus">
+                        <span>Speed Estimation</span>
+                        <span>Not Implemented</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-panel">
+                <h3>🔧 Debug Controls</h3>
+                <div class="debug-controls">
+                    <div class="control-group">
+                        <label for="debugLevel">Debug Level:</label>
+                        <div class="slider-container">
+                            <input type="range" id="debugLevel" class="slider" min="0" max="4" value="0" 
+                                   onchange="setDebugLevel(this.value)">
+                            <span class="value-display" id="debugLevelValue">0</span>
+                        </div>
+                        <small>0=Off, 1=Basic, 2=Edges, 3=Lines, 4=Full</small>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="frameRate">Processing Rate (fps):</label>
+                        <div class="slider-container">
+                            <input type="range" id="frameRate" class="slider" min="1" max="15" value="10" 
+                                   onchange="setFrameRate(this.value)">
+                            <span class="value-display" id="frameRateValue">10</span>
+                        </div>
+                        <small>Controls both processing and display rate</small>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label>PID Parameters:</label>
+                        <div class="pid-controls">
+                            <div class="pid-input">
+                                <label for="kp">Kp</label>
+                                <input type="number" id="kp" step="0.1" value="0.5" min="0" max="2" 
+                                       onchange="updatePIDParameters()">
+                            </div>
+                            <div class="pid-input">
+                                <label for="ki">Ki</label>
+                                <input type="number" id="ki" step="0.01" value="0.0" min="0" max="1" 
+                                       onchange="updatePIDParameters()">
+                            </div>
+                            <div class="pid-input">
+                                <label for="kd">Kd</label>
+                                <input type="number" id="kd" step="0.01" value="0.1" min="0" max="1" 
+                                       onchange="updatePIDParameters()">
+                            </div>
+                        </div>
+                        <small>Start with Kp only, then add Ki and Kd</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-panel">
+                <h3>🧪 Testing</h3>
+                <button class="control-btn" onclick="testRobot()" style="width: 100%; background: #17a2b8; color: white;">
+                    🔧 Test Robot Function
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let isAutonomous = false;
+        let lastUpdateTime = Date.now();
+        
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            setupKeyboardControls();
+            
+            // Update status every 2 seconds
+            setInterval(updateStatus, 2000);
+            
+            // Update autonomous status more frequently
+            setInterval(updateAutonomousStatus, 1000);
+            
+            addLog('Interface initialized - Ready for control');
+        });
+        
+        // Movement functions
+        function moveRobot(direction) {
+            if (isAutonomous) {
+                addLog('❌ Manual control disabled during autonomous mode');
+                return;
+            }
+            
+            fetch(`/move/${direction}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addLog(`✅ ${direction.toUpperCase()}: ${data.message}`);
+                        updateCommandDisplay(data);
+                    } else {
+                        addLog(`❌ ${direction.toUpperCase()}: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    addLog(`❌ Network error: ${error.message}`);
+                });
+        }
+        
+        // Autonomous control
+        function startAutonomous() {
+            fetch('/start_autonomous')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        isAutonomous = true;
+                        addLog(`🤖 ${data.message}`);
+                        document.getElementById('currentMode').textContent = 'Autonomous';
+                        updateAutonomousButtons();
+                    } else {
+                        addLog(`❌ Failed to start autonomous: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    addLog(`❌ Autonomous start error: ${error.message}`);
+                });
+        }
+        
+        function stopAutonomous() {
+            fetch('/stop_autonomous')
+                .then(response => response.json())
+                .then(data => {
+                    isAutonomous = false;
+                    addLog(`⏹️ ${data.message}`);
+                    document.getElementById('currentMode').textContent = 'Manual';
+                    updateAutonomousButtons();
+                })
+                .catch(error => {
+                    addLog(`❌ Autonomous stop error: ${error.message}`);
+                });
+        }
+        
+        function updateAutonomousButtons() {
+            const startBtn = document.querySelector('.start-autonomous');
+            const stopBtn = document.querySelector('.stop-autonomous');
+            
+            if (isAutonomous) {
+                startBtn.style.opacity = '0.5';
+                startBtn.style.cursor = 'not-allowed';
+                stopBtn.style.opacity = '1';
+                stopBtn.style.cursor = 'pointer';
+            } else {
+                startBtn.style.opacity = '1';
+                startBtn.style.cursor = 'pointer';
+                stopBtn.style.opacity = '0.5';
+                stopBtn.style.cursor = 'not-allowed';
+            }
+        }
+        
+        // Debug controls
+        function setDebugLevel(level) {
+            document.getElementById('debugLevelValue').textContent = level;
+            document.getElementById('overlayDebugLevel').textContent = level;
+            
+            fetch(`/set_debug_level/${level}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addLog(`🔧 Debug level set to ${level}`);
+                    }
+                })
+                .catch(error => {
+                    addLog(`❌ Debug level error: ${error.message}`);
+                });
+        }
+        
+        function setFrameRate(fps) {
+            document.getElementById('frameRateValue').textContent = fps;
+            
+            fetch(`/set_frame_rate/${fps}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addLog(`🔧 Processing rate set to ${fps} fps`);
+                    }
+                })
+                .catch(error => {
+                    addLog(`❌ Frame rate error: ${error.message}`);
+                });
+        }
+        
+        function updatePIDParameters() {
+            const kp = document.getElementById('kp').value;
+            const ki = document.getElementById('ki').value;
+            const kd = document.getElementById('kd').value;
+            
+            fetch(`/update_pid_parameters?kp=${kp}&ki=${ki}&kd=${kd}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addLog(`🔧 PID updated: Kp=${kp}, Ki=${ki}, Kd=${kd}`);
+                    }
+                })
+                .catch(error => {
+                    addLog(`❌ PID update error: ${error.message}`);
+                });
+        }
+        
+        // Status updates
+        function updateStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('lastCommand').textContent = data.last_command;
+                    document.getElementById('commandCount').textContent = data.command_count;
+                    document.getElementById('robotConnected').textContent = data.robot_connected ? 'Yes' : 'No';
+                    
+                    if (data.autonomous_mode !== isAutonomous) {
+                        isAutonomous = data.autonomous_mode;
+                        document.getElementById('currentMode').textContent = isAutonomous ? 'Autonomous' : 'Manual';
+                        updateAutonomousButtons();
+                    }
+                })
+                .catch(error => {
+                    console.log('Status update failed:', error);
+                });
+        }
+        
+        function updateAutonomousStatus() {
+            fetch('/autonomous_status')
+                .then(response => response.json())
+                .then(data => {
+                    updateFeatureStatus('lineFollowingStatus', data.features.line_following);
+                    updateFeatureStatus('signDetectionStatus', data.features.sign_detection);
+                    updateFeatureStatus('speedEstimationStatus', data.features.speed_estimation);
+                })
+                .catch(error => {
+                    console.log('Autonomous status update failed:', error);
+                });
+        }
+        
+        function updateFeatureStatus(elementId, status) {
+            const element = document.getElementById(elementId);
+            const statusSpan = element.querySelector('span:last-child');
+            
+            // Remove existing status classes
+            element.classList.remove('feature-active', 'feature-inactive', 'feature-error');
+            
+            if (status === 'Active') {
+                element.classList.add('feature-active');
+                statusSpan.textContent = '✅ Active';
+            } else if (status === 'Not Implemented') {
+                element.classList.add('feature-inactive');
+                statusSpan.textContent = '⏳ Not Implemented';
+            } else if (status.startsWith('Error') || status.startsWith('Runtime Error')) {
+                element.classList.add('feature-error');
+                statusSpan.textContent = '❌ Error';
+            } else {
+                element.classList.add('feature-inactive');
+                statusSpan.textContent = status;
+            }
+        }
+        
+        function updateCommandDisplay(data) {
+            if (data.command_count) {
+                document.getElementById('commandCount').textContent = data.command_count;
+            }
+            if (data.direction) {
+                document.getElementById('lastCommand').textContent = data.direction;
+            }
+        }
+        
+        // Test function
+        function testRobot() {
+            if (isAutonomous) {
+                addLog('❌ Cannot test during autonomous mode');
+                return;
+            }
+            
+            fetch('/test')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addLog(`🧪 Test completed: ${data.message}`);
+                    } else {
+                        addLog(`❌ Test failed: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    addLog(`❌ Test error: ${error.message}`);
+                });
+        }
+        
+        // Keyboard controls
+        function setupKeyboardControls() {
+            document.addEventListener('keydown', function(event) {
+                const key = event.key.toLowerCase();
+                
+                // Prevent default behavior for our control keys
+                if (['w', 'a', 's', 'd', 'f'].includes(key)) {
+                    event.preventDefault();
+                }
+                
+                switch(key) {
+                    case 'w':
+                        moveRobot('forward');
+                        highlightButton('w');
+                        break;
+                    case 'a':
+                        moveRobot('left');
+                        highlightButton('a');
+                        break;
+                    case 's':
+                        moveRobot('backward');
+                        highlightButton('s');
+                        break;
+                    case 'd':
+                        moveRobot('right');
+                        highlightButton('d');
+                        break;
+                    case 'f':
+                        moveRobot('stop');
+                        highlightButton('f');
+                        break;
+                }
+            });
+        }
+        
+        function highlightButton(key) {
+            const button = document.querySelector(`[data-key="${key}"]`);
+            if (button) {
+                button.style.transform = 'scale(0.95)';
+                button.style.opacity = '0.8';
+                setTimeout(() => {
+                    button.style.transform = 'translateY(-2px)';
+                    button.style.opacity = '1';
+                }, 100);
+            }
+        }
+        
+        // Logging function
+        function addLog(message) {
+            const logPanel = document.getElementById('logPanel');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span style="color: #666;">[${timestamp}]</span> ${message}`;
+            
+            logPanel.appendChild(logEntry);
+            logPanel.scrollTop = logPanel.scrollHeight;
+            
+            // Keep only last 50 log entries
+            while (logPanel.children.length > 50) {
+                logPanel.removeChild(logPanel.firstChild);
+            }
+        }
+        
+        // Video feed error handling
+        document.getElementById('videoFeed').addEventListener('error', function() {
+            this.alt = 'Camera feed unavailable';
+            addLog('❌ Camera feed lost - check camera connection');
+        });
+        
+        document.getElementById('videoFeed').addEventListener('load', function() {
+            addLog('📷 Camera feed connected');
+        });
+    </script>
+</body>
+</html>

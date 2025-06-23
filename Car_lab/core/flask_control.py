@@ -188,6 +188,54 @@ def get_status():
         'autonomous_mode': robot.autonomous_mode
     })
 
+# Add these routes to the existing flask_control.py file
+
+@app.route('/set_debug_level/<int:level>')
+def set_debug_level(level):
+    """Set debugging visualization level"""
+    robot.set_debug_level(level)
+    return jsonify({
+        'success': True,
+        'debug_level': robot.debug_level,
+        'message': f'Debug level set to {level}'
+    })
+
+@app.route('/set_frame_rate/<int:fps>')
+def set_frame_rate(fps):
+    """Set frame rate for debugging"""
+    robot.set_frame_rate(fps)
+    return jsonify({
+        'success': True,
+        'frame_rate': robot.target_fps,
+        'message': f'Frame rate set to {fps} fps'
+    })
+
+@app.route('/update_pid_parameters')
+def update_pid_parameters():
+    """Update PID parameters via web interface"""
+    kp = request.args.get('kp', type=float)
+    ki = request.args.get('ki', type=float)
+    kd = request.args.get('kd', type=float)
+    
+    robot.update_pid_parameters(kp=kp, ki=ki, kd=kd)
+    
+    return jsonify({
+        'success': True,
+        'message': 'PID parameters updated',
+        'kp': kp,
+        'ki': ki, 
+        'kd': kd
+    })
+
+@app.route('/get_debug_status')
+def get_debug_status():
+    """Get current debugging status"""
+    return jsonify({
+        'debug_level': robot.debug_level,
+        'frame_rate': robot.target_fps,
+        'autonomous_mode': robot.autonomous_mode
+    })
+
 @app.route('/test')
 def test_robot():
     """Test basic robot functionality"""
