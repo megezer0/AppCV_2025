@@ -70,14 +70,15 @@ def main():
         from flask_control import app, camera
         
         # Start camera
+        print("📷 Initializing camera (may take a few seconds)...")
         camera.start_streaming()
-        time.sleep(1)
+        time.sleep(3)  # Give camera more time to start
         
         # Get the actual IP address
         local_ip = get_local_ip()
         
         print("\n🚀 Server starting...")
-        print("📷 Camera initialized")
+        print("📷 Camera streaming with libcamera-vid")
         print("🌐 Web interface available at:")
         print("   - Local: http://localhost:5000")
         print(f"   - Network: http://{local_ip}:5000")
@@ -85,6 +86,7 @@ def main():
         print("   - Use WASD keys or web buttons")
         print("   - Each movement lasts 0.5 seconds")
         print("   - Red button for emergency stop")
+        print("   - Status updates appear in log below video")
         print("\n" + "="*50)
         
         app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)

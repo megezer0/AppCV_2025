@@ -27,6 +27,13 @@
             align-items: flex-start;
             flex-wrap: wrap;
             justify-content: center;
+            max-width: 1200px;
+        }
+        
+        .video-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
         
         .video-container {
@@ -42,12 +49,41 @@
             object-fit: cover;
         }
         
+        .status-log {
+            width: 640px;
+            height: 150px;
+            background-color: #0a0a0a;
+            border: 2px solid #333;
+            border-radius: 5px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-y: scroll;
+            color: #00ff00;
+        }
+        
+        .status-log::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .status-log::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+        
+        .status-log::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+        
         .control-panel {
             background-color: #2a2a2a;
             padding: 20px;
             border-radius: 10px;
             border: 2px solid #444;
             min-width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
         
         .control-grid {
@@ -97,7 +133,6 @@
         .backward { grid-column: 2; grid-row: 3; }
         
         .status-panel {
-            margin-top: 20px;
             padding: 15px;
             background-color: #1a1a1a;
             border: 1px solid #555;
@@ -107,51 +142,24 @@
         .status-item {
             margin: 5px 0;
             font-family: monospace;
+            display: flex;
+            justify-content: space-between;
         }
         
-        .activity-log {
-            margin-top: 15px;
-            padding: 10px;
-            background-color: #000;
-            border: 1px solid #333;
-            border-radius: 5px;
-            height: 150px;
-            overflow-y: auto;
-            font-family: monospace;
-            font-size: 12px;
-        }
-        
-        .log-entry {
-            margin: 2px 0;
-            padding: 2px 5px;
-            border-radius: 3px;
-        }
-        
-        .log-entry.command {
-            background-color: #003300;
+        .status-value {
             color: #00ff00;
-        }
-        
-        .log-entry.status {
-            background-color: #000033;
-            color: #6666ff;
-        }
-        
-        .log-entry.error {
-            background-color: #330000;
-            color: #ff6666;
+            font-weight: bold;
         }
         
         .instructions {
-            margin-top: 20px;
             padding: 15px;
             background-color: #2a2a2a;
             border-left: 4px solid #0066cc;
             border-radius: 0 5px 5px 0;
+            font-size: 14px;
         }
         
         .test-button {
-            margin-top: 15px;
             padding: 10px 20px;
             background-color: #006600;
             color: white;
@@ -181,17 +189,46 @@
             background-color: #440000;
             color: #ff4444;
         }
+        
+        .log-line {
+            margin: 2px 0;
+            padding: 1px 0;
+        }
+        
+        .log-command {
+            color: #00aaff;
+        }
+        
+        .log-status {
+            color: #ffaa00;
+        }
+        
+        .log-error {
+            color: #ff4444;
+        }
+        
+        .log-success {
+            color: #00ff00;
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>🚗 PiCar-X Control Interface</h1>
-        <p>Use WASD keys or click buttons to control the robot</p>
+        <p>Real-time camera feed with manual robot control</p>
     </div>
     
     <div class="main-container">
-        <div class="video-container">
-            <img src="{{ url_for('video_feed') }}" class="video-feed" alt="Robot Camera Feed">
+        <div class="video-section">
+            <div class="video-container">
+                <img src="{{ url_for('video_feed') }}" class="video-feed" alt="Robot Camera Feed">
+            </div>
+            
+            <div class="status-log" id="statusLog">
+                <div class="log-line log-status">[INFO] System initialized - ready for control</div>
+                <div class="log-line log-status">[INFO] Camera streaming active</div>
+                <div class="log-line log-status">[INFO] Use WASD keys or buttons to control robot</div>
+            </div>
         </div>
         
         <div class="control-panel">
@@ -221,27 +258,38 @@
             
             <div class="status-panel">
                 <h4>System Status</h4>
-                <div class="status-item">Last Command: <span id="lastCommand">none</span></div>
-                <div class="status-item">Commands Sent: <span id="commandCount">0</span></div>
-                <div class="status-item">Robot Status: <span id="robotStatus">unknown</span></div>
-                <div class="status-item">Connection: <span id="connectionStatus">checking...</span></div>
-                
-                <h4>Activity Log</h4>
-                <div class="activity-log" id="activityLog">
-                    <div class="log-entry status">System started - waiting for commands...</div>
+                <div class="status-item">
+                    <span>Last Command:</span>
+                    <span class="status-value" id="lastCommand">none</span>
+                </div>
+                <div class="status-item">
+                    <span>Commands Sent:</span>
+                    <span class="status-value" id="commandCount">0</span>
+                </div>
+                <div class="status-item">
+                    <span>Robot Status:</span>
+                    <span class="status-value" id="robotStatus">unknown</span>
+                </div>
+                <div class="status-item">
+                    <span>Connection:</span>
+                    <span class="status-value" id="connectionStatus">checking...</span>
                 </div>
             </div>
             
+            <div id="messageArea"></div>
+            
             <div class="instructions">
-                <h4>Instructions:</h4>
-                <ul>
-                    <li><strong>W</strong> or ↑ button: Move forward</li>
-                    <li><strong>S</strong> or ↓ button: Move backward</li>
-                    <li><strong>A</strong> or ← button: Turn left</li>
-                    <li><strong>D</strong> or → button: Turn right</li>
+                <h4>Controls:</h4>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li><strong>W</strong> or ↑: Move forward (0.5s)</li>
+                    <li><strong>S</strong> or ↓: Move backward (0.5s)</li>
+                    <li><strong>A</strong> or ←: Turn left (0.5s)</li>
+                    <li><strong>D</strong> or →: Turn right (0.5s)</li>
                     <li><strong>Red button</strong>: Emergency stop</li>
                 </ul>
-                <p><em>Each movement lasts 0.5 seconds and then auto-stops.</em></p>
+                <p style="margin: 5px 0; font-style: italic; font-size: 12px;">
+                    Each movement lasts 0.5 seconds and auto-stops for safety.
+                </p>
             </div>
         </div>
     </div>
@@ -249,23 +297,8 @@
     <script>
         // Global variables
         let isCommandActive = false;
-        
-        // Activity logging functions
-        function addLogEntry(message, type = 'status') {
-            const logContainer = document.getElementById('activityLog');
-            const timestamp = new Date().toLocaleTimeString();
-            const logEntry = document.createElement('div');
-            logEntry.className = `log-entry ${type}`;
-            logEntry.textContent = `[${timestamp}] ${message}`;
-            
-            logContainer.appendChild(logEntry);
-            logContainer.scrollTop = logContainer.scrollHeight;
-            
-            // Keep only last 50 entries
-            while (logContainer.children.length > 50) {
-                logContainer.removeChild(logContainer.firstChild);
-            }
-        }
+        let logLineCount = 0;
+        const maxLogLines = 50;
         
         // Keyboard event listeners
         document.addEventListener('keydown', function(event) {
@@ -292,6 +325,27 @@
             }
         });
         
+        // Add line to status log
+        function addLogLine(message, type = 'status') {
+            const log = document.getElementById('statusLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const logLine = document.createElement('div');
+            logLine.className = `log-line log-${type}`;
+            logLine.innerHTML = `[${timestamp}] ${message}`;
+            
+            log.appendChild(logLine);
+            logLineCount++;
+            
+            // Remove old lines if too many
+            if (logLineCount > maxLogLines) {
+                log.removeChild(log.firstChild);
+                logLineCount--;
+            }
+            
+            // Auto-scroll to bottom
+            log.scrollTop = log.scrollHeight;
+        }
+        
         // Send command to robot
         function sendCommand(direction) {
             if (isCommandActive && direction !== 'stop') return;
@@ -300,55 +354,61 @@
             highlightButton(direction);
             
             // Log the command
-            const commandText = {
+            const commandNames = {
                 'forward': 'Moving forward',
                 'backward': 'Moving backward', 
                 'left': 'Turning left',
                 'right': 'Turning right',
                 'stop': 'Emergency stop'
-            }[direction] || `Unknown command: ${direction}`;
+            };
             
-            addLogEntry(`Command: ${commandText}`, 'command');
+            addLogLine(`CMD: ${commandNames[direction]}`, 'command');
             
             fetch(`/move/${direction}`)
                 .then(response => response.json())
                 .then(data => {
                     console.log('Command result:', data);
+                    
                     if (data.success) {
-                        addLogEntry(`✓ ${data.message}`, 'status');
+                        addLogLine(`✓ ${data.message}`, 'success');
                     } else {
-                        addLogEntry(`✗ ${data.message}`, 'error');
+                        addLogLine(`✗ ${data.message}`, 'error');
                     }
+                    
+                    showMessage(data.message, data.success ? 'success' : 'error');
                     updateStatus();
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    addLogEntry(`✗ Command failed: ${error}`, 'error');
+                    addLogLine(`✗ Command failed: ${error}`, 'error');
+                    showMessage('Command failed: ' + error, 'error');
                 })
                 .finally(() => {
                     setTimeout(() => {
                         isCommandActive = false;
                         clearButtonHighlight();
-                        addLogEntry('Robot stopped', 'status');
                     }, 600);
                 });
         }
         
         // Test robot connection
         function testRobot() {
-            addLogEntry('Testing robot connection...', 'command');
+            addLogLine('Testing robot connection...', 'status');
+            
             fetch('/test')
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        addLogEntry(`✓ ${data.message}`, 'status');
+                        addLogLine(`✓ ${data.message}`, 'success');
                     } else {
-                        addLogEntry(`✗ ${data.message}`, 'error');
+                        addLogLine(`✗ ${data.message}`, 'error');
                     }
+                    showMessage(data.message, data.success ? 'success' : 'error');
                     updateStatus();
                 })
                 .catch(error => {
-                    addLogEntry(`✗ Test failed: ${error}`, 'error');
+                    addLogLine(`✗ Test failed: ${error}`, 'error');
+                    showMessage('Test failed: ' + error, 'error');
                 });
         }
         
@@ -368,6 +428,17 @@
             });
         }
         
+        // Show message to user
+        function showMessage(text, type) {
+            const messageArea = document.getElementById('messageArea');
+            messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
+            
+            // Clear message after 3 seconds
+            setTimeout(() => {
+                messageArea.innerHTML = '';
+            }, 3000);
+        }
+        
         // Update status display
         function updateStatus() {
             fetch('/status')
@@ -382,18 +453,19 @@
                 .catch(error => {
                     console.error('Status update failed:', error);
                     document.getElementById('connectionStatus').textContent = 'error';
-                    addLogEntry('Status update failed', 'error');
                 });
         }
         
-        // Update status every 3 seconds
-        setInterval(updateStatus, 3000);
+        // Update status every 2 seconds
+        setInterval(updateStatus, 2000);
         
-        // Initial setup
-        window.addEventListener('load', function() {
-            addLogEntry('Web interface loaded', 'status');
-            updateStatus();
-        });
+        // Initial status update
+        updateStatus();
+        
+        // Add initial log message
+        setTimeout(() => {
+            addLogLine('Interface loaded - ready for commands', 'success');
+        }, 1000);
         
         // Prevent arrow key scrolling
         window.addEventListener("keydown", function(e) {

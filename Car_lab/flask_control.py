@@ -58,7 +58,7 @@ def index():
 
 @app.route('/video_feed')
 def video_feed():
-    """Video streaming route"""
+    """Video streaming route - clean video without overlays"""
     def generate():
         while True:
             frame_bytes = camera.get_jpeg_frame()
