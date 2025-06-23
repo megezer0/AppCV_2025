@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import cv2
+import numpy as np
 import threading
 import time
 from vilib import Vilib
@@ -24,7 +25,7 @@ class CameraManager:
     
     def _create_error_frame(self):
         """Create a black frame with error message"""
-        frame = cv2.zeros((480, 640, 3), dtype=cv2.uint8)
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
         cv2.putText(frame, "Camera Error", (200, 240), 
                    cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
         return frame
@@ -47,7 +48,7 @@ class CameraManager:
                 # We'll create a simple frame for now since vilib is mainly for web streaming
                 
                 # Create a basic frame with timestamp for testing
-                frame = cv2.zeros((480, 640, 3), dtype=cv2.uint8)
+                frame = np.zeros((480, 640, 3), dtype=np.uint8)
                 
                 # Add timestamp and status
                 timestamp = time.strftime("%H:%M:%S", time.localtime())

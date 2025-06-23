@@ -4,6 +4,7 @@ from flask import Flask, render_template, Response, jsonify, request
 import atexit
 import signal
 import sys
+import socket
 from robot_controller import robot
 from camera_manager import camera
 
@@ -13,6 +14,31 @@ app = Flask(__name__)
 # Global state for tracking commands
 last_command = "none"
 command_count = 0
+
+def get_local_ip():
+    """Get the local IP address of this machine"""
+    try:
+        # Connect to a remote address (doesn't actually send data)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+        return local_ip
+    except Exception:
+        try:
+            # Fallback method
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+            if local_ip.startswith("127."):
+                # If we get localhost, try getting all addresses
+                import subprocess
+                result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    addresses = result.stdout.strip().split()
+                    if addresses:
+                        local_ip = addresses[0]
+            return local_ip
+        except Exception:
+            return "localhost"
 
 def cleanup_handler():
     """Clean up resources on exit"""
@@ -129,9 +155,12 @@ if __name__ == '__main__':
         # Start camera streaming
         camera.start_streaming()
         
+        # Get the actual IP address
+        local_ip = get_local_ip()
+        
         print("Starting Flask server...")
         print("Open http://localhost:5000 in your browser")
-        print("Or from another device: http://<raspberry-pi-ip>:5000")
+        print(f"Or from another device: http://{local_ip}:5000")
         print("Use WASD keys or buttons to control the robot")
         
         # Run Flask app

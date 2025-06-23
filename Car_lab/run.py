@@ -7,6 +7,32 @@ Simple script to run the PiCar-X control application
 import sys
 import subprocess
 import time
+import socket
+
+def get_local_ip():
+    """Get the local IP address of this machine"""
+    try:
+        # Connect to a remote address (doesn't actually send data)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+        return local_ip
+    except Exception:
+        try:
+            # Fallback method
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+            if local_ip.startswith("127."):
+                # If we get localhost, try getting all addresses
+                import subprocess
+                result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    addresses = result.stdout.strip().split()
+                    if addresses:
+                        local_ip = addresses[0]
+            return local_ip
+        except Exception:
+            return "localhost"
 
 def check_requirements():
     """Check if required modules are available"""
@@ -47,11 +73,14 @@ def main():
         camera.start_streaming()
         time.sleep(1)
         
+        # Get the actual IP address
+        local_ip = get_local_ip()
+        
         print("\n🚀 Server starting...")
         print("📷 Camera initialized")
         print("🌐 Web interface available at:")
         print("   - Local: http://localhost:5000")
-        print("   - Network: http://<your-pi-ip>:5000")
+        print(f"   - Network: http://{local_ip}:5000")
         print("\n🎮 Controls:")
         print("   - Use WASD keys or web buttons")
         print("   - Each movement lasts 0.5 seconds")
