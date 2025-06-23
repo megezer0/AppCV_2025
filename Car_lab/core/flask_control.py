@@ -58,19 +58,78 @@ def index():
 
 @app.route('/video_feed')
 def video_feed():
-    """Video streaming route - clean video without overlays"""
+    """Video streaming route with autonomous processing"""
     def generate():
         while True:
-            frame_bytes = camera.get_jpeg_frame()
+            # Get raw frame from camera
+            frame = camera.get_frame()
+            
+            # Process frame for autonomous features if enabled
+            processed_frame = robot.process_autonomous_frame(frame)
+            
+            # Convert to JPEG for streaming
+            import cv2
+            ret, buffer = cv2.imencode('.jpg', processed_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ret:
+                frame_bytes = buffer.tobytes()
+            else:
+                # Fallback to camera's built-in encoding
+                frame_bytes = camera.get_jpeg_frame()
+            
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+# =============================================================================
+# AUTONOMOUS CONTROL ROUTES (NEW)
+# =============================================================================
+
+@app.route('/start_autonomous')
+def start_autonomous():
+    """Start autonomous line following mode"""
+    success, message = robot.start_autonomous_mode()
+    global last_command
+    last_command = "autonomous started" if success else "autonomous failed"
+    
+    return jsonify({
+        'success': success,
+        'message': message
+    })
+
+@app.route('/stop_autonomous')
+def stop_autonomous():
+    """Stop autonomous mode"""
+    success, message = robot.stop_autonomous_mode()
+    global last_command
+    last_command = "autonomous stopped"
+    
+    return jsonify({
+        'success': success,
+        'message': message
+    })
+
+@app.route('/autonomous_status')
+def get_autonomous_status():
+    """Get detailed autonomous system status"""
+    return jsonify(robot.get_feature_status())
+
+# =============================================================================
+# EXISTING MANUAL CONTROL ROUTES (unchanged)
+# =============================================================================
+
 @app.route('/move/<direction>')
 def move_robot(direction):
     """Handle movement commands"""
     global last_command, command_count
+    
+    # Don't allow manual control during autonomous mode
+    if robot.autonomous_mode:
+        return jsonify({
+            'success': False,
+            'message': 'Manual control disabled during autonomous mode',
+            'command_count': command_count
+        })
     
     command_count += 1
     success = False
@@ -125,7 +184,8 @@ def get_status():
         'last_command': last_command,
         'command_count': command_count,
         'is_moving': robot.is_moving if robot.picar else False,
-        'robot_connected': robot.picar is not None
+        'robot_connected': robot.picar is not None,
+        'autonomous_mode': robot.autonomous_mode
     })
 
 @app.route('/test')
@@ -135,6 +195,12 @@ def test_robot():
         return jsonify({
             'success': False,
             'message': 'Robot not connected'
+        })
+    
+    if robot.autonomous_mode:
+        return jsonify({
+            'success': False,
+            'message': 'Cannot test during autonomous mode'
         })
     
     try:
@@ -162,6 +228,7 @@ if __name__ == '__main__':
         print("Open http://localhost:5000 in your browser")
         print(f"Or from another device: http://{local_ip}:5000")
         print("Use WASD keys or buttons to control the robot")
+        print("Click 'Follow Line' to start autonomous mode")
         
         # Run Flask app
         app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
