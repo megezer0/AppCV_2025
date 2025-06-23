@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiCar-X Control Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .main-container {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .video-container {
+            border: 3px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #000;
+        }
+        
+        .video-feed {
+            width: 640px;
+            height: 480px;
+            object-fit: cover;
+        }
+        
+        .control-panel {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #444;
+            min-width: 300px;
+        }
+        
+        .control-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            gap: 10px;
+            margin: 20px 0;
+            max-width: 240px;
+        }
+        
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            font-size: 24px;
+            font-weight: bold;
+            border: 2px solid #555;
+            border-radius: 8px;
+            background-color: #3a3a3a;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .control-btn:hover {
+            background-color: #4a4a4a;
+            border-color: #777;
+        }
+        
+        .control-btn:active {
+            background-color: #5a5a5a;
+            transform: scale(0.95);
+        }
+        
+        .control-btn.active {
+            background-color: #0066cc;
+            border-color: #0099ff;
+        }
+        
+        .forward { grid-column: 2; grid-row: 1; }
+        .left { grid-column: 1; grid-row: 2; }
+        .stop { grid-column: 2; grid-row: 2; background-color: #cc3300; }
+        .right { grid-column: 3; grid-row: 2; }
+        .backward { grid-column: 2; grid-row: 3; }
+        
+        .status-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #1a1a1a;
+            border: 1px solid #555;
+            border-radius: 5px;
+        }
+        
+        .status-item {
+            margin: 5px 0;
+            font-family: monospace;
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #2a2a2a;
+            border-left: 4px solid #0066cc;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        .test-button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background-color: #006600;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .test-button:hover {
+            background-color: #008800;
+        }
+        
+        .message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .message.success {
+            background-color: #004400;
+            color: #00ff00;
+        }
+        
+        .message.error {
+            background-color: #440000;
+            color: #ff4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚗 PiCar-X Control Interface</h1>
+        <p>Use WASD keys or click buttons to control the robot</p>
+    </div>
+    
+    <div class="main-container">
+        <div class="video-container">
+            <img src="{{ url_for('video_feed') }}" class="video-feed" alt="Robot Camera Feed">
+        </div>
+        
+        <div class="control-panel">
+            <h3>Robot Controls</h3>
+            
+            <div class="control-grid">
+                <button class="control-btn forward" onclick="sendCommand('forward')" title="Forward (W)">
+                    ↑
+                </button>
+                <button class="control-btn left" onclick="sendCommand('left')" title="Turn Left (A)">
+                    ←
+                </button>
+                <button class="control-btn stop" onclick="sendCommand('stop')" title="Emergency Stop">
+                    ⏹
+                </button>
+                <button class="control-btn right" onclick="sendCommand('right')" title="Turn Right (D)">
+                    →
+                </button>
+                <button class="control-btn backward" onclick="sendCommand('backward')" title="Backward (S)">
+                    ↓
+                </button>
+            </div>
+            
+            <button class="test-button" onclick="testRobot()">
+                Test Robot Connection
+            </button>
+            
+            <div class="status-panel">
+                <h4>Status</h4>
+                <div class="status-item">Last Command: <span id="lastCommand">none</span></div>
+                <div class="status-item">Commands Sent: <span id="commandCount">0</span></div>
+                <div class="status-item">Robot Status: <span id="robotStatus">unknown</span></div>
+                <div class="status-item">Connection: <span id="connectionStatus">checking...</span></div>
+            </div>
+            
+            <div id="messageArea"></div>
+            
+            <div class="instructions">
+                <h4>Instructions:</h4>
+                <ul>
+                    <li><strong>W</strong> or ↑ button: Move forward</li>
+                    <li><strong>S</strong> or ↓ button: Move backward</li>
+                    <li><strong>A</strong> or ← button: Turn left</li>
+                    <li><strong>D</strong> or → button: Turn right</li>
+                    <li><strong>Red button</strong>: Emergency stop</li>
+                </ul>
+                <p><em>Each movement lasts 0.5 seconds and then auto-stops.</em></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let isCommandActive = false;
+        
+        // Keyboard event listeners
+        document.addEventListener('keydown', function(event) {
+            if (isCommandActive) return; // Prevent spam
+            
+            const key = event.key.toLowerCase();
+            switch(key) {
+                case 'w':
+                    sendCommand('forward');
+                    break;
+                case 's':
+                    sendCommand('backward');
+                    break;
+                case 'a':
+                    sendCommand('left');
+                    break;
+                case 'd':
+                    sendCommand('right');
+                    break;
+                case ' ':
+                    event.preventDefault();
+                    sendCommand('stop');
+                    break;
+            }
+        });
+        
+        // Send command to robot
+        function sendCommand(direction) {
+            if (isCommandActive && direction !== 'stop') return;
+            
+            isCommandActive = true;
+            highlightButton(direction);
+            
+            fetch(`/move/${direction}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Command result:', data);
+                    showMessage(data.message, data.success ? 'success' : 'error');
+                    updateStatus();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showMessage('Command failed: ' + error, 'error');
+                })
+                .finally(() => {
+                    setTimeout(() => {
+                        isCommandActive = false;
+                        clearButtonHighlight();
+                    }, 600);
+                });
+        }
+        
+        // Test robot connection
+        function testRobot() {
+            fetch('/test')
+                .then(response => response.json())
+                .then(data => {
+                    showMessage(data.message, data.success ? 'success' : 'error');
+                    updateStatus();
+                })
+                .catch(error => {
+                    showMessage('Test failed: ' + error, 'error');
+                });
+        }
+        
+        // Highlight button when pressed
+        function highlightButton(direction) {
+            clearButtonHighlight();
+            const button = document.querySelector(`.${direction}`);
+            if (button) {
+                button.classList.add('active');
+            }
+        }
+        
+        // Clear button highlights
+        function clearButtonHighlight() {
+            document.querySelectorAll('.control-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+        }
+        
+        // Show message to user
+        function showMessage(text, type) {
+            const messageArea = document.getElementById('messageArea');
+            messageArea.innerHTML = `<div class="message ${type}">${text}</div>`;
+            
+            // Clear message after 3 seconds
+            setTimeout(() => {
+                messageArea.innerHTML = '';
+            }, 3000);
+        }
+        
+        // Update status display
+        function updateStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('lastCommand').textContent = data.last_command;
+                    document.getElementById('commandCount').textContent = data.command_count;
+                    document.getElementById('robotStatus').textContent = data.is_moving ? 'moving' : 'stopped';
+                    document.getElementById('connectionStatus').textContent = 
+                        data.robot_connected ? 'connected' : 'disconnected';
+                })
+                .catch(error => {
+                    console.error('Status update failed:', error);
+                    document.getElementById('connectionStatus').textContent = 'error';
+                });
+        }
+        
+        // Update status every 2 seconds
+        setInterval(updateStatus, 2000);
+        
+        // Initial status update
+        updateStatus();
+        
+        // Prevent arrow key scrolling
+        window.addEventListener("keydown", function(e) {
+            if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+        }, false);
+    </script>
+</body>
+</html>
