@@ -56,16 +56,16 @@ class CameraManager:
             logger.info("Camera streaming started")
     
     def _capture_frames(self):
-        """Continuously capture frames using libcamera-vid streaming"""
+        """Continuously capture frames using libcamera-vid streaming (from working example)"""
         logger.info("Starting libcamera-vid streaming...")
         
         try:
-            # Start libcamera-vid streaming to stdout
+            # Start libcamera-vid streaming to stdout (exact command from working example)
             cmd = [
                 "libcamera-vid",
                 "-t", "0",  # Infinite timeout
                 "--width", "320",
-                "--height", "240", 
+                "--height", "240",
                 "--framerate", "15",
                 "-o", "-",  # Output to stdout
                 "--codec", "mjpeg",
@@ -78,7 +78,9 @@ class CameraManager:
             # Test if the process starts successfully
             time.sleep(1)
             if self.process.poll() is not None:
-                logger.error("libcamera-vid failed to start")
+                stderr_output = self.process.stderr.read().decode('utf-8')
+                logger.error(f"libcamera-vid failed to start. Error: {stderr_output}")
+                self._fallback_placeholder_loop()
                 return
             
             logger.info("libcamera-vid streaming started successfully")
@@ -108,7 +110,7 @@ class CameraManager:
                         if frame is not None:
                             with self.lock:
                                 self.current_frame = frame.copy()
-                    
+                
                 except Exception as e:
                     logger.error(f"Streaming error: {e}")
                     break
@@ -118,11 +120,18 @@ class CameraManager:
                 
         except Exception as e:
             logger.error(f"libcamera streaming setup failed: {e}")
-            # Fall back to placeholder frames
-            while self.is_running:
-                with self.lock:
-                    self.current_frame = self._create_placeholder_frame("Camera Error")
-                time.sleep(0.1)
+            self._fallback_placeholder_loop()
+    
+    def _fallback_placeholder_loop(self):
+        """Generate placeholder frames when camera fails"""
+        logger.info("Using placeholder frames due to camera failure")
+        frame_counter = 0
+        while self.is_running:
+            frame_counter += 1
+            message = f"Camera Error - Frame {frame_counter}"
+            with self.lock:
+                self.current_frame = self._create_placeholder_frame(message)
+            time.sleep(0.1)
     
     def get_frame(self):
         """Get the current frame"""

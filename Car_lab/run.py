@@ -36,7 +36,7 @@ def get_local_ip():
 
 def check_requirements():
     """Check if required modules are available"""
-    required_modules = ['flask', 'cv2', 'picarx', 'vilib']
+    required_modules = ['flask', 'cv2', 'picarx']  # Removed vilib
     missing_modules = []
     
     for module in required_modules:
