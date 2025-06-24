@@ -18,18 +18,15 @@ command_count = 0
 def get_local_ip():
     """Get the local IP address of this machine"""
     try:
-        # Connect to a remote address (doesn't actually send data)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
         return local_ip
     except Exception:
         try:
-            # Fallback method
             hostname = socket.gethostname()
             local_ip = socket.gethostbyname(hostname)
             if local_ip.startswith("127."):
-                # If we get localhost, try getting all addresses
                 import subprocess
                 result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
                 if result.returncode == 0:
@@ -64,7 +61,7 @@ def video_feed():
             # Get raw frame from camera
             frame = camera.get_frame()
             
-            # Process frame for autonomous features if enabled
+            # Process frame for autonomous features and debug visualization
             processed_frame = robot.process_autonomous_frame(frame)
             
             # Convert to JPEG for streaming
@@ -73,7 +70,6 @@ def video_feed():
             if ret:
                 frame_bytes = buffer.tobytes()
             else:
-                # Fallback to camera's built-in encoding
                 frame_bytes = camera.get_jpeg_frame()
             
             yield (b'--frame\r\n'
@@ -82,7 +78,7 @@ def video_feed():
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # =============================================================================
-# AUTONOMOUS CONTROL ROUTES (NEW)
+# AUTONOMOUS CONTROL ROUTES
 # =============================================================================
 
 @app.route('/start_autonomous')
@@ -115,6 +111,146 @@ def get_autonomous_status():
     return jsonify(robot.get_feature_status())
 
 # =============================================================================
+# CAMERA CONTROL ROUTES (FIXED - Using Query Parameters)
+# =============================================================================
+
+@app.route('/set_camera_pan')
+def set_camera_pan():
+    """Set camera pan angle using query parameter"""
+    try:
+        angle = request.args.get('angle', type=int)
+        if angle is None:
+            return jsonify({
+                'success': False,
+                'message': 'Angle parameter required'
+            }), 400
+        
+        success = robot.set_camera_pan(angle)
+        return jsonify({
+            'success': success,
+            'angle': angle,
+            'message': f'Camera pan set to {angle}°' if success else 'Camera pan failed'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error setting camera pan: {str(e)}'
+        }), 500
+
+@app.route('/set_camera_tilt')
+def set_camera_tilt():
+    """Set camera tilt angle using query parameter"""
+    try:
+        angle = request.args.get('angle', type=int)
+        if angle is None:
+            return jsonify({
+                'success': False,
+                'message': 'Angle parameter required'
+            }), 400
+        
+        success = robot.set_camera_tilt(angle)
+        return jsonify({
+            'success': success,
+            'angle': angle,
+            'message': f'Camera tilt set to {angle}°' if success else 'Camera tilt failed'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error setting camera tilt: {str(e)}'
+        }), 500
+
+@app.route('/camera_look_down')
+def camera_look_down():
+    """Preset: Point camera down for line following"""
+    success = robot.camera_look_down()
+    return jsonify({
+        'success': success,
+        'message': 'Camera pointed down for line following' if success else 'Camera positioning failed'
+    })
+
+@app.route('/camera_look_forward')
+def camera_look_forward():
+    """Preset: Point camera forward"""
+    success = robot.camera_look_forward()
+    return jsonify({
+        'success': success,
+        'message': 'Camera pointed forward' if success else 'Camera positioning failed'
+    })
+
+# =============================================================================
+# DEBUG DATA ROUTES
+# =============================================================================
+
+@app.route('/debug_data')
+def get_debug_data():
+    """Get clean debug data for sidebar"""
+    return jsonify(robot.get_debug_data())
+
+@app.route('/set_debug_level')
+def set_debug_level():
+    """Set debugging visualization level using query parameter"""
+    try:
+        level = request.args.get('level', type=int)
+        if level is None:
+            return jsonify({
+                'success': False,
+                'message': 'Level parameter required'
+            }), 400
+        
+        robot.set_debug_level(level)
+        return jsonify({
+            'success': True,
+            'debug_level': robot.debug_level,
+            'message': f'Debug level set to {level}'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error setting debug level: {str(e)}'
+        }), 500
+
+@app.route('/set_frame_rate')
+def set_frame_rate():
+    """Set frame rate using query parameter"""
+    try:
+        fps = request.args.get('fps', type=int)
+        if fps is None:
+            return jsonify({
+                'success': False,
+                'message': 'FPS parameter required'
+            }), 400
+        
+        robot.set_frame_rate(fps)
+        return jsonify({
+            'success': True,
+            'frame_rate': robot.target_fps,
+            'message': f'Frame rate set to {fps} fps'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error setting frame rate: {str(e)}'
+        }), 500
+
+@app.route('/update_pid_parameters')
+def update_pid_parameters():
+    """Update PID parameters via web interface"""
+    kp = request.args.get('kp', type=float)
+    ki = request.args.get('ki', type=float)
+    kd = request.args.get('kd', type=float)
+    
+    robot.update_pid_parameters(kp=kp, ki=ki, kd=kd)
+    
+    return jsonify({
+        'success': True,
+        'message': 'PID parameters updated',
+        'kp': kp,
+        'ki': ki, 
+        'kd': kd
+    })
+
+# =============================================================================
 # EXISTING MANUAL CONTROL ROUTES (unchanged)
 # =============================================================================
 
@@ -123,7 +259,6 @@ def move_robot(direction):
     """Handle movement commands"""
     global last_command, command_count
     
-    # Don't allow manual control during autonomous mode
     if robot.autonomous_mode:
         return jsonify({
             'success': False,
@@ -188,54 +323,6 @@ def get_status():
         'autonomous_mode': robot.autonomous_mode
     })
 
-# Add these routes to the existing flask_control.py file
-
-@app.route('/set_debug_level/<int:level>')
-def set_debug_level(level):
-    """Set debugging visualization level"""
-    robot.set_debug_level(level)
-    return jsonify({
-        'success': True,
-        'debug_level': robot.debug_level,
-        'message': f'Debug level set to {level}'
-    })
-
-@app.route('/set_frame_rate/<int:fps>')
-def set_frame_rate(fps):
-    """Set frame rate for debugging"""
-    robot.set_frame_rate(fps)
-    return jsonify({
-        'success': True,
-        'frame_rate': robot.target_fps,
-        'message': f'Frame rate set to {fps} fps'
-    })
-
-@app.route('/update_pid_parameters')
-def update_pid_parameters():
-    """Update PID parameters via web interface"""
-    kp = request.args.get('kp', type=float)
-    ki = request.args.get('ki', type=float)
-    kd = request.args.get('kd', type=float)
-    
-    robot.update_pid_parameters(kp=kp, ki=ki, kd=kd)
-    
-    return jsonify({
-        'success': True,
-        'message': 'PID parameters updated',
-        'kp': kp,
-        'ki': ki, 
-        'kd': kd
-    })
-
-@app.route('/get_debug_status')
-def get_debug_status():
-    """Get current debugging status"""
-    return jsonify({
-        'debug_level': robot.debug_level,
-        'frame_rate': robot.target_fps,
-        'autonomous_mode': robot.autonomous_mode
-    })
-
 @app.route('/test')
 def test_robot():
     """Test basic robot functionality"""
@@ -252,7 +339,6 @@ def test_robot():
         })
     
     try:
-        # Simple test sequence
         robot.move_forward(duration=0.2, speed=30)
         return jsonify({
             'success': True,
@@ -266,19 +352,14 @@ def test_robot():
 
 if __name__ == '__main__':
     try:
-        # Start camera streaming
         camera.start_streaming()
-        
-        # Get the actual IP address
         local_ip = get_local_ip()
         
         print("Starting Flask server...")
         print("Open http://localhost:5000 in your browser")
         print(f"Or from another device: http://{local_ip}:5000")
-        print("Use WASD keys or buttons to control the robot")
-        print("Click 'Follow Line' to start autonomous mode")
+        print("Use camera controls to position camera, then start autonomous mode")
         
-        # Run Flask app
         app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
         
     except KeyboardInterrupt:
