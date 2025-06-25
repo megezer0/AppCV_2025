@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiCar-X Control Interface</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+        
+        .main-content {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .control-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1, h2, h3 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        #videoFeed {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        /* Camera Controls */
+        .camera-controls {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .camera-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .camera-preset {
+            padding: 10px;
+            background: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        .camera-preset:hover {
+            background: #1976d2;
+        }
+        
+        .camera-preset.success {
+            background: #4caf50;
+        }
+        
+        .camera-preset.error {
+            background: #f44336;
+        }
+        
+        .angle-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .angle-control label {
+            min-width: 80px;
+            font-weight: bold;
+        }
+        
+        .angle-slider {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+        }
+        
+        .angle-value {
+            min-width: 40px;
+            text-align: center;
+            font-weight: bold;
+            color: #2196f3;
+        }
+        
+        /* Debug Sidebar */
+        .debug-sidebar {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #28a745;
+        }
+        
+        .debug-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .debug-label {
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .debug-value {
+            color: #28a745;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        
+        /* Robot Controls */
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .control-btn {
+            padding: 15px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .forward { background: #3498db; color: white; }
+        .backward { background: #95a5a6; color: white; }
+        .left { background: #f39c12; color: white; }
+        .right { background: #f39c12; color: white; }
+        .stop { background: #e74c3c; color: white; }
+        
+        .autonomous-controls {
+            margin: 20px 0;
+        }
+        
+        .autonomous-btn {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .start-autonomous {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .stop-autonomous {
+            background: #e67e22;
+            color: white;
+        }
+        
+        .autonomous-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        /* Control Groups */
+        .control-group {
+            margin: 15px 0;
+        }
+        
+        .control-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #495057;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+        }
+        
+        .value-display {
+            min-width: 40px;
+            text-align: center;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .pid-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .pid-input {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .pid-input label {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .pid-input input {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .status-panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .status-label {
+            font-weight: bold;
+        }
+        
+        .status-value {
+            color: #007bff;
+        }
+        
+        .keyboard-hint {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+            border-left: 4px solid #2196f3;
+        }
+
+        .feature-status {
+            margin-top: 10px;
+        }
+
+        .feature-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #ddd;
+        }
+
+        .feature-item.active {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+
+        .feature-item.disabled {
+            border-left-color: #6c757d;
+            background: #f8f9fa;
+        }
+
+        .feature-item.error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+
+        .feature-label {
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .feature-value {
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .feature-value.active {
+            color: #28a745;
+        }
+
+        .feature-value.disabled {
+            color: #6c757d;
+        }
+
+        .feature-value.error {
+            color: #dc3545;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .camera-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <h1>🚗 PiCar-X Control Interface</h1>
+            
+            <div class="video-container">
+                <img id="videoFeed" src="/video_feed" alt="Robot Camera Feed">
+            </div>
+            
+            <!-- Camera Positioning Controls -->
+            <div class="camera-controls">
+                <h3>📷 Camera Positioning</h3>
+                <div class="camera-grid">
+                    <button class="camera-preset" id="lookDownBtn" onclick="cameraLookDown()">
+                        📍 Look Down (Line Following)
+                    </button>
+                    <button class="camera-preset" id="lookForwardBtn" onclick="cameraLookForward()">
+                        👁️ Look Forward
+                    </button>
+                </div>
+                
+                <div class="angle-control">
+                    <label>Pan:</label>
+                    <input type="range" class="angle-slider" id="cameraPan" 
+                           min="-90" max="90" value="0" onchange="setCameraPan(this.value)">
+                    <span class="angle-value" id="panValue">0°</span>
+                </div>
+                
+                <div class="angle-control">
+                    <label>Tilt:</label>
+                    <input type="range" class="angle-slider" id="cameraTilt" 
+                           min="-90" max="90" value="-30" onchange="setCameraTilt(this.value)">
+                    <span class="angle-value" id="tiltValue">-30°</span>
+                </div>
+            </div>
+            
+            <div class="keyboard-hint">
+                💡 <strong>Setup:</strong> Position camera using controls above, then start autonomous mode
+            </div>
+            
+            <div class="controls-grid">
+                <div></div>
+                <button class="control-btn forward" onclick="moveRobot('forward')" data-key="w">
+                    ⬆️ Forward (W)
+                </button>
+                <div></div>
+                
+                <button class="control-btn left" onclick="moveRobot('left')" data-key="a">
+                    ⬅️ Left (A)
+                </button>
+                <button class="control-btn stop" onclick="moveRobot('stop')" data-key="f">
+                    🛑 STOP (F)
+                </button>
+                <button class="control-btn right" onclick="moveRobot('right')" data-key="d">
+                    ➡️ Right (D)
+                </button>
+                
+                <div></div>
+                <button class="control-btn backward" onclick="moveRobot('backward')" data-key="s">
+                    ⬇️ Backward (S)
+                </button>
+                <div></div>
+            </div>
+            
+            <div class="autonomous-controls">
+                <h3>🤖 Autonomous Mode</h3>
+                <button class="autonomous-btn start-autonomous" onclick="startAutonomous()">
+                    🚀 Start Line Following
+                </button>
+                <button class="autonomous-btn stop-autonomous" onclick="stopAutonomous()">
+                    ⏹️ Stop Autonomous Mode
+                </button>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <!-- Debug Information Sidebar -->
+            <div class="control-panel">
+                <h3>🔍 Line Following Debug</h3>
+                <div class="debug-sidebar" id="debugInfo">
+                    <div class="debug-item">
+                        <span class="debug-label">Mode:</span>
+                        <span class="debug-value" id="debugMode">Manual</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">Error:</span>
+                        <span class="debug-value" id="debugError">0.0 px</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">Steering:</span>
+                        <span class="debug-value" id="debugSteering">0.0°</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">Lines Found:</span>
+                        <span class="debug-value" id="debugLines">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Debug Controls -->
+            <div class="control-panel">
+                <h3>🔧 Debug Controls</h3>
+                
+                <div class="control-group">
+                    <label for="debugLevel">Debug Level:</label>
+                    <div class="slider-container">
+                        <input type="range" id="debugLevel" class="slider" min="0" max="4" value="0" 
+                               onchange="setDebugLevel(this.value)">
+                        <span class="value-display" id="debugLevelValue">0</span>
+                    </div>
+                    <small>0=Off, 1=Basic, 2=Edges, 3=Lines, 4=Full</small>
+                </div>
+                
+                <div class="control-group">
+                    <label for="frameRate">Processing Rate (fps):</label>
+                    <div class="slider-container">
+                        <input type="range" id="frameRate" class="slider" min="1" max="15" value="10" 
+                               onchange="setFrameRate(this.value)">
+                        <span class="value-display" id="frameRateValue">10</span>
+                    </div>
+                </div>
+                
+                <!-- <div class="control-group">
+                    <label>PID Parameters:</label>
+                    <div class="pid-controls">
+                        <div class="pid-input">
+                            <label for="kp">Kp</label>
+                            <input type="number" id="kp" step="0.1" value="0.8" min="0" max="2" 
+                                   onchange="updatePIDParameters()">
+                        </div>
+                        <div class="pid-input">
+                            <label for="ki">Ki</label>
+                            <input type="number" id="ki" step="0.01" value="0.02" min="0" max="1" 
+                                   onchange="updatePIDParameters()">
+                        </div>
+                        <div class="pid-input">
+                            <label for="kd">Kd</label>
+                            <input type="number" id="kd" step="0.01" value="0.15" min="0" max="1" 
+                                   onchange="updatePIDParameters()">
+                        </div>
+                    </div>
+                </div> -->
+            </div>
+            
+            <!-- Robot Status -->
+            <div class="control-panel">
+                <h3>📊 Robot Status</h3>
+                <div class="status-panel">
+                    <div class="status-item">
+                        <span class="status-label">Last Command:</span>
+                        <span class="status-value" id="lastCommand">none</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Robot Connected:</span>
+                        <span class="status-value" id="robotConnected">Unknown</span>
+                    </div>
+                </div>
+                
+                <h4 style="color: #2c3e50; margin: 15px 0 10px 0;">🔧 Features Status</h4>
+                <div class="feature-status">
+                    <div class="feature-item" id="lineFollowingFeature">
+                        <span class="feature-label">Line Following:</span>
+                        <span class="feature-value" id="lineFollowingStatus">Loading...</span>
+                    </div>
+                    <div class="feature-item" id="signDetectionFeature">
+                        <span class="feature-label">Sign Detection:</span>
+                        <span class="feature-value" id="signDetectionStatus">Loading...</span>
+                    </div>
+                    <div class="feature-item" id="speedEstimationFeature">
+                        <span class="feature-label">Speed Estimation:</span>
+                        <span class="feature-value" id="speedEstimationStatus">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let isAutonomous = false;
+        
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            setupKeyboardControls();
+            
+            // Update status and debug data regularly
+            setInterval(updateStatus, 2000);
+            setInterval(updateDebugData, 500);
+        });
+        
+        // =================================================================
+        // CAMERA CONTROL FUNCTIONS (FIXED - Using Query Parameters)
+        // =================================================================
+        
+        function setCameraPan(angle) {
+            document.getElementById('panValue').textContent = angle + '°';
+            
+            fetch(`/set_camera_pan?angle=${angle}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('Camera pan success:', data.message);
+                    } else {
+                        console.error('Camera pan failed:', data.message);
+                        // Reset slider to previous position on failure
+                        // Could implement this if needed
+                    }
+                })
+                .catch(error => {
+                    console.error('Camera pan error:', error);
+                });
+        }
+        
+        function setCameraTilt(angle) {
+            document.getElementById('tiltValue').textContent = angle + '°';
+            
+            fetch(`/set_camera_tilt?angle=${angle}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('Camera tilt success:', data.message);
+                    } else {
+                        console.error('Camera tilt failed:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Camera tilt error:', error);
+                });
+        }
+        
+        function cameraLookDown() {
+            const btn = document.getElementById('lookDownBtn');
+            btn.classList.add('success');
+            
+            fetch('/camera_look_down')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('cameraPan').value = 0;
+                        document.getElementById('cameraTilt').value = -30;
+                        document.getElementById('panValue').textContent = '0°';
+                        document.getElementById('tiltValue').textContent = '-30°';
+                        console.log('Camera look down success');
+                    } else {
+                        btn.classList.remove('success');
+                        btn.classList.add('error');
+                        console.error('Camera look down failed:', data.message);
+                    }
+                    setTimeout(() => {
+                        btn.classList.remove('success', 'error');
+                    }, 1000);
+                })
+                .catch(error => {
+                    btn.classList.remove('success');
+                    btn.classList.add('error');
+                    console.error('Camera look down error:', error);
+                    setTimeout(() => {
+                        btn.classList.remove('error');
+                    }, 1000);
+                });
+        }
+        
+        function cameraLookForward() {
+            const btn = document.getElementById('lookForwardBtn');
+            btn.classList.add('success');
+            
+            fetch('/camera_look_forward')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('cameraPan').value = 0;
+                        document.getElementById('cameraTilt').value = 0;
+                        document.getElementById('panValue').textContent = '0°';
+                        document.getElementById('tiltValue').textContent = '0°';
+                        console.log('Camera look forward success');
+                    } else {
+                        btn.classList.remove('success');
+                        btn.classList.add('error');
+                        console.error('Camera look forward failed:', data.message);
+                    }
+                    setTimeout(() => {
+                        btn.classList.remove('success', 'error');
+                    }, 1000);
+                })
+                .catch(error => {
+                    btn.classList.remove('success');
+                    btn.classList.add('error');
+                    console.error('Camera look forward error:', error);
+                    setTimeout(() => {
+                        btn.classList.remove('error');
+                    }, 1000);
+                });
+        }
+        
+        // =================================================================
+        // DEBUG DATA UPDATES
+        // =================================================================
+        
+        function updateDebugData() {
+            fetch('/debug_data')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('debugMode').textContent = data.mode;
+                    document.getElementById('debugError').textContent = data.error_px.toFixed(1) + ' px';
+                    document.getElementById('debugSteering').textContent = data.steering_angle.toFixed(1) + '°';
+                    document.getElementById('debugLines').textContent = data.lines_detected;
+                })
+                .catch(error => {
+                    console.log('Debug data update failed:', error);
+                });
+        }
+        
+        // =================================================================
+        // MOVEMENT AND AUTONOMOUS FUNCTIONS
+        // =================================================================
+        
+        function moveRobot(direction) {
+            if (isAutonomous) {
+                console.log('Manual control disabled during autonomous mode');
+                return;
+            }
+            
+            fetch(`/move/${direction}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log(`${direction}: ${data.message}`);
+                })
+                .catch(error => {
+                    console.log(`Movement error: ${error.message}`);
+                });
+        }
+        
+        function startAutonomous() {
+            fetch('/start_autonomous')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        isAutonomous = true;
+                        updateAutonomousButtons();
+                        console.log('Autonomous mode started');
+                    } else {
+                        console.log(`Failed to start autonomous: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.log(`Autonomous start error: ${error.message}`);
+                });
+        }
+        
+        function stopAutonomous() {
+            fetch('/stop_autonomous')
+                .then(response => response.json())
+                .then(data => {
+                    isAutonomous = false;
+                    updateAutonomousButtons();
+                    console.log('Autonomous mode stopped');
+                })
+                .catch(error => {
+                    console.log(`Autonomous stop error: ${error.message}`);
+                });
+        }
+        
+        function updateAutonomousButtons() {
+            const startBtn = document.querySelector('.start-autonomous');
+            const stopBtn = document.querySelector('.stop-autonomous');
+            
+            if (isAutonomous) {
+                startBtn.style.opacity = '0.5';
+                startBtn.style.cursor = 'not-allowed';
+                stopBtn.style.opacity = '1';
+                stopBtn.style.cursor = 'pointer';
+            } else {
+                startBtn.style.opacity = '1';
+                startBtn.style.cursor = 'pointer';
+                stopBtn.style.opacity = '0.5';
+                stopBtn.style.cursor = 'not-allowed';
+            }
+        }
+        
+        // =================================================================
+        // DEBUG CONTROLS (FIXED - Using Query Parameters)
+        // =================================================================
+        
+        function setDebugLevel(level) {
+            document.getElementById('debugLevelValue').textContent = level;
+            
+            fetch(`/set_debug_level?level=${level}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log(`Debug level set to ${level}`);
+                })
+                .catch(error => {
+                    console.error('Debug level error:', error);
+                });
+        }
+        
+        function setFrameRate(fps) {
+            document.getElementById('frameRateValue').textContent = fps;
+            
+            fetch(`/set_frame_rate?fps=${fps}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log(`Frame rate set to ${fps} fps`);
+                })
+                .catch(error => {
+                    console.error('Frame rate error:', error);
+                });
+        }
+        
+        function updatePIDParameters() {
+            const kp = document.getElementById('kp').value;
+            const ki = document.getElementById('ki').value;
+            const kd = document.getElementById('kd').value;
+            
+            fetch(`/update_pid_parameters?kp=${kp}&ki=${ki}&kd=${kd}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log(`PID updated: Kp=${kp}, Ki=${ki}, Kd=${kd}`);
+                })
+                .catch(error => {
+                    console.error('PID update error:', error);
+                });
+        }
+        
+        // =================================================================
+        // STATUS UPDATES
+        // =================================================================
+        
+        function updateStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('lastCommand').textContent = data.last_command;
+                    document.getElementById('robotConnected').textContent = data.robot_connected ? 'Yes' : 'No';
+                    
+                    if (data.autonomous_mode !== isAutonomous) {
+                        isAutonomous = data.autonomous_mode;
+                        updateAutonomousButtons();
+                    }
+                })
+                .catch(error => {
+                    console.log('Status update failed:', error);
+                });
+            
+            fetch('/autonomous_status')
+                .then(response => response.json())
+                .then(data => {
+                    updateFeatureStatus('lineFollowing', data.features.line_following);
+                    updateFeatureStatus('signDetection', data.features.sign_detection);
+                    updateFeatureStatus('speedEstimation', data.features.speed_estimation);
+                })
+                .catch(error => {
+                    console.log('Feature status update failed:', error);
+                });
+        }
+
+        function updateFeatureStatus(featureName, status) {
+            const featureElement = document.getElementById(featureName + 'Feature');
+            const statusElement = document.getElementById(featureName + 'Status');
+            
+            // Remove existing status classes
+            featureElement.classList.remove('active', 'disabled', 'error');
+            statusElement.classList.remove('active', 'disabled', 'error');
+            
+            // Update text and styling based on status
+            if (status === 'Active') {
+                statusElement.textContent = '✅ Active';
+                featureElement.classList.add('active');
+                statusElement.classList.add('active');
+            } else if (status === 'Disabled') {
+                statusElement.textContent = '⚪ Disabled';
+                featureElement.classList.add('disabled');
+                statusElement.classList.add('disabled');
+            } else if (status.startsWith('Error')) {
+                statusElement.textContent = '❌ Error';
+                featureElement.classList.add('error');
+                statusElement.classList.add('error');
+            } else {
+                statusElement.textContent = status;
+                featureElement.classList.add('disabled');
+                statusElement.classList.add('disabled');
+            }
+        }
+        
+        // =================================================================
+        // KEYBOARD CONTROLS
+        // =================================================================
+        
+        function setupKeyboardControls() {
+            document.addEventListener('keydown', function(event) {
+                const key = event.key.toLowerCase();
+                
+                if (['w', 'a', 's', 'd', 'f'].includes(key)) {
+                    event.preventDefault();
+                }
+                
+                switch(key) {
+                    case 'w':
+                        moveRobot('forward');
+                        highlightButton('w');
+                        break;
+                    case 'a':
+                        moveRobot('left');
+                        highlightButton('a');
+                        break;
+                    case 's':
+                        moveRobot('backward');
+                        highlightButton('s');
+                        break;
+                    case 'd':
+                        moveRobot('right');
+                        highlightButton('d');
+                        break;
+                    case 'f':
+                        moveRobot('stop');
+                        highlightButton('f');
+                        break;
+                }
+            });
+        }
+        
+        function highlightButton(key) {
+            const button = document.querySelector(`[data-key="${key}"]`);
+            if (button) {
+                button.style.transform = 'scale(0.95)';
+                button.style.opacity = '0.8';
+                setTimeout(() => {
+                    button.style.transform = 'translateY(-2px)';
+                    button.style.opacity = '1';
+                }, 100);
+            }
+        }
+    </script>
+</body>
+</html>
